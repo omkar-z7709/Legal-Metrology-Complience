@@ -1,0 +1,17 @@
+services:
+  # Optional local Postgres with pgvector for local offline development
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: lm_compliance_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
