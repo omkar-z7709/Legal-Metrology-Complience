@@ -30,32 +30,33 @@ export class StorageService {
   ): Promise<UploadResult> {
     const storagePath = `${folder}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
-    try {
-      // 1. Attempt Supabase Storage upload
-      const { data, error } = await supabaseAdmin.storage
-        .from(BUCKET_NAME)
-        .upload(storagePath, fileBuffer, {
-          contentType,
-          upsert: true,
-        });
+    // //1. Try to connect to supabase
+    // try {
+    //   // 1. Attempt Supabase Storage upload
+    //   const { data, error } = await supabaseAdmin.storage
+    //     .from(BUCKET_NAME)
+    //     .upload(storagePath, fileBuffer, {
+    //       contentType,
+    //       upsert: true,
+    //     });
 
-      if (!error && data) {
-        // Generate signed URL (valid for 24 hours)
-        const { data: signedData } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .createSignedUrl(storagePath, 60 * 60 * 24);
+    //   if (!error && data) {
+    //     // Generate signed URL (valid for 24 hours)
+    //     const { data: signedData } = await supabaseAdmin.storage
+    //       .from(BUCKET_NAME)
+    //       .createSignedUrl(storagePath, 60 * 60 * 24);
 
-        return {
-          storagePath,
-          signedUrl:
-            signedData?.signedUrl ||
-            `https://storage.supabase.co/${BUCKET_NAME}/${storagePath}`,
-          storageProvider: "supabase",
-        };
-      }
-    } catch (supabaseErr) {
-      // Fallback gracefully to local disk for local testing / offline demo
-    }
+    //     return {
+    //       storagePath,
+    //       signedUrl:
+    //         signedData?.signedUrl ||
+    //         `https://storage.supabase.co/${BUCKET_NAME}/${storagePath}`,
+    //       storageProvider: "supabase",
+    //     };
+    //   }
+    // } catch (supabaseErr) {
+    //   // Fallback gracefully to local disk for local testing / offline demo
+    // }
 
     // 2. Local File System Fallback
     await ensureLocalDir();

@@ -70,22 +70,31 @@ export class DBRepo {
     manufacturerName?: string;
     manufacturerAddress?: string;
   }) {
-    if (await isDatabaseLive()) {
-      try {
-        const [created] = await db.insert(products).values(data).returning();
-        if (created) return created;
-      } catch {}
+    if (!(await isDatabaseLive())) {
+      throw new Error("PostgreSQL database is unavailable.");
     }
 
-    const id = crypto.randomUUID();
-    const record = {
-      id,
-      ...data,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    memoryStore.products.set(id, record);
-    return record;
+    try {
+      const [created] = await db.insert(products).values(data).returning();
+      if (!created) {
+        throw new Error("Product was not created.");
+      }
+
+      return created;
+    } catch (error) {
+      console.error("[DB] Failed to insert product:", error);
+      throw error;
+    }
+
+    // const id = crypto.randomUUID();
+    // const record = {
+    //   id,
+    //   ...data,
+    //   createdAt: new Date(),
+    //   updatedAt: new Date(),
+    // };
+    // memoryStore.products.set(id, record);
+    // return record;
   }
 
   static async updateProduct(id: string, data: Partial<any>) {
@@ -102,6 +111,16 @@ export class DBRepo {
         updatedAt: new Date(),
       });
     }
+  }
+
+  static async getUserByEmail(email: string) {
+    if (!(await isDatabaseLive())) {
+      return null;
+    }
+
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+
+    return user || null;
   }
 
   static async getProduct(id: string) {
@@ -126,23 +145,32 @@ export class DBRepo {
     complianceStatus?: string;
     complianceScore?: string;
   }) {
-    if (await isDatabaseLive()) {
-      try {
-        const [created] = await db.insert(scans).values(data).returning();
-        if (created) return created;
-      } catch {}
+    if (!(await isDatabaseLive())) {
+      throw new Error("PostgreSQL database is unavailable.");
     }
 
-    const id = crypto.randomUUID();
-    const record = {
-      id,
-      ...data,
-      reviewStatus: "PENDING",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    memoryStore.scans.set(id, record);
-    return record;
+    try {
+      const [created] = await db.insert(scans).values(data).returning();
+      if (!created) {
+        throw new Error("Scan was not created.");
+      }
+
+      return created;
+    } catch (error) {
+      console.error("[DB] Failed to insert scan:", error);
+      throw error;
+    }
+
+    // const id = crypto.randomUUID();
+    // const record = {
+    //   id,
+    //   ...data,
+    //   reviewStatus: "PENDING",
+    //   createdAt: new Date(),
+    //   updatedAt: new Date(),
+    // };
+    // memoryStore.scans.set(id, record);
+    // return record;
   }
 
   static async updateScan(id: string, data: Partial<any>) {
@@ -208,29 +236,34 @@ export class DBRepo {
   }
 
   static async insertImage(data: any) {
-    if (await isDatabaseLive()) {
-      try {
-        const [created] = await db.insert(images).values(data).returning();
-
-        if (created) {
-          return created;
-        }
-      } catch (error) {
-        console.error("[DB] Failed to insert image:", error);
-      }
+    if (!(await isDatabaseLive())) {
+      throw new Error("PostgreSQL database is unavailable.");
     }
 
-    const id = crypto.randomUUID();
+    try {
+      const [created] = await db.insert(images).values(data).returning();
 
-    const record = {
-      id,
-      ...data,
-      createdAt: new Date(),
-    };
+      if (!created) {
+        throw new Error("Image record was not created.");
+      }
 
-    memoryStore.images.set(id, record);
+      return created;
+    } catch (error) {
+      console.error("[DB] Failed to insert image:", error);
+      throw error;
+    }
 
-    return record;
+    // const id = crypto.randomUUID();
+
+    // const record = {
+    //   id,
+    //   ...data,
+    //   createdAt: new Date(),
+    // };
+
+    // memoryStore.images.set(id, record);
+
+    // return record;
   }
 
   static async getScanImages(scanId: string) {

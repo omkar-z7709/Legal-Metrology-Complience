@@ -311,6 +311,7 @@ export default function NewInspectionPage() {
                   <CardBody className="space-y-4">
                     <label className="border-2 border-dashed border-slate-300 hover:border-slate-400 rounded-xl p-8 text-center transition-colors bg-slate-50/50 flex flex-col items-center justify-center cursor-pointer min-h-[260px] relative overflow-hidden">
                       <input
+                        id="package-images"
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
                         multiple

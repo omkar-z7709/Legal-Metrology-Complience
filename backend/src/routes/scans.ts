@@ -94,18 +94,6 @@ export const scanRoutes: FastifyPluginAsync = async (
       }
 
       // Continue with product + scan creation...
-      const processedImages = [];
-
-      for (const file of files) {
-        const preprocessResult = await PreprocessService.preprocess(
-          file.buffer,
-        );
-
-        processedImages.push({
-          ...file,
-          preprocessResult,
-        });
-      }
 
       const createdProduct = await DBRepo.insertProduct({
         name: productName,
@@ -118,12 +106,19 @@ export const scanRoutes: FastifyPluginAsync = async (
         100000 + Math.random() * 900000,
       )}`;
 
+      let inspectorId: string | undefined;
+
+      if (request.user?.email) {
+        const dbUser = await DBRepo.getUserByEmail(request.user.email);
+
+        if (dbUser) {
+          inspectorId = dbUser.id;
+        }
+      }
+
       const createdScan = await DBRepo.insertScan({
         productId: createdProduct.id,
-        inspectorId:
-          request.user?.id && request.user.id.includes("-")
-            ? request.user.id
-            : undefined,
+        inspectorId,
         scanNumber,
         location,
         status: "PROCESSING",
@@ -131,48 +126,68 @@ export const scanRoutes: FastifyPluginAsync = async (
         complianceScore: "0.00",
       });
 
-      const storedImages = [];
+      // const storedImages = [];
 
-      for (const image of processedImages) {
-        const originalUpload = await StorageService.uploadFile(
-          image.buffer,
-          `orig_${image.filename}`,
-          image.mimetype,
-          "scans/original",
-        );
+      // for (const image of processedImages) {
+      //   const originalUpload = await StorageService.uploadFile(
+      //     image.buffer,
+      //     `orig_${image.filename}`,
+      //     image.mimetype,
+      //     "scans/original",
+      //   );
 
-        const processedUpload = await StorageService.uploadFile(
-          image.preprocessResult.processedBuffer,
-          `prep_${image.filename}.jpg`,
-          "image/jpeg",
-          "scans/preprocessed",
-        );
+      //   const processedUpload = await StorageService.uploadFile(
+      //     image.preprocessResult.processedBuffer,
+      //     `prep_${image.filename}.jpg`,
+      //     "image/jpeg",
+      //     "scans/preprocessed",
+      //   );
 
-        const originalRecord = await DBRepo.insertImage({
-          scanId: createdScan.id,
-          imageType: "ORIGINAL",
-          storagePath: originalUpload.storagePath,
-          fileName: image.filename,
-          contentType: image.mimetype,
-          fileSizeBytes: image.buffer.length,
-        });
+      //   const originalRecord = await DBRepo.insertImage({
+      //     scanId: createdScan.id,
+      //     imageType: "ORIGINAL",
+      //     storagePath: originalUpload.storagePath,
+      //     fileName: image.filename,
+      //     contentType: image.mimetype,
+      //     fileSizeBytes: image.buffer.length,
+      //   });
 
-        const processedRecord = await DBRepo.insertImage({
-          scanId: createdScan.id,
-          imageType: "PREPROCESSED",
-          storagePath: processedUpload.storagePath,
-          fileName: `preprocessed_${image.filename}`,
-          contentType: "image/jpeg",
-          fileSizeBytes: image.preprocessResult.processedBuffer.length,
-          width: image.preprocessResult.width,
-          height: image.preprocessResult.height,
-        });
+      //   const processedRecord = await DBRepo.insertImage({
+      //     scanId: createdScan.id,
+      //     imageType: "PREPROCESSED",
+      //     storagePath: processedUpload.storagePath,
+      //     fileName: `preprocessed_${image.filename}`,
+      //     contentType: "image/jpeg",
+      //     fileSizeBytes: image.preprocessResult.processedBuffer.length,
+      //     width: image.preprocessResult.width,
+      //     height: image.preprocessResult.height,
+      //   });
 
-        storedImages.push({
-          original: originalRecord,
-          preprocessed: processedRecord,
-        });
-      }
+      //   storedImages.push({
+      //     original: originalRecord,
+      //     preprocessed: processedRecord,
+      //   });
+      // }
+
+      const storedImages = await Promise.all(
+        files.map(async (file) => {
+          const upload = await StorageService.uploadFile(
+            file.buffer,
+            file.filename,
+            file.mimetype,
+            "scans/original",
+          );
+
+          return DBRepo.insertImage({
+            scanId: createdScan.id,
+            imageType: "ORIGINAL",
+            storagePath: upload.storagePath,
+            fileName: file.filename,
+            contentType: file.mimetype,
+            fileSizeBytes: file.buffer.length,
+          });
+        }),
+      );
 
       return reply.status(201).send({
         success: true,

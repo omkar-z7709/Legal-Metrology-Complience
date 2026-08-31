@@ -8,6 +8,7 @@ import {
   ComplianceDecision,
 } from "../engine/decision.engine.js";
 import { OcrResult } from "../ocr/ocr.interface.js";
+import { PreprocessService } from "../preprocess.service.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -23,23 +24,36 @@ export class InspectionPipelineService {
     if (!scan) throw new Error(`Scan with ID '${scanId}' not found.`);
 
     const scanImages = await DBRepo.getScanImages(scanId);
-    const processedImages = scanImages.filter(
-      (img) => img.imageType === "PREPROCESSED",
+    const originalImages = scanImages.filter(
+      (img) => img.imageType === "ORIGINAL",
     );
 
-    if (processedImages.length === 0) {
+    if (originalImages.length === 0) {
       throw new Error("No preprocessed images found for this scan.");
     }
 
-    const ocrResults = [];
+    // const ocrResults = [];
 
-    for (const image of processedImages) {
-      const imageBuffer = await StorageService.downloadFile(image.storagePath);
+    // for (const image of processedImages) {
+    //   const imageBuffer = await StorageService.downloadFile(image.storagePath);
 
-      const result = await OcrService.extract(imageBuffer);
+    //   const result = await OcrService.extract(imageBuffer);
 
-      ocrResults.push(result);
-    }
+    //   ocrResults.push(result);
+    // }
+
+    const ocrResults = await Promise.all(
+      originalImages.map(async (image) => {
+        const imageBuffer = await StorageService.downloadFile(
+          image.storagePath,
+        );
+
+        const preprocessResult =
+          await PreprocessService.preprocess(imageBuffer);
+
+        return OcrService.extract(preprocessResult.processedBuffer);
+      }),
+    );
 
     const combinedOcrText = ocrResults
       .map(
