@@ -26,7 +26,7 @@ export class StorageService {
     fileBuffer: Buffer,
     fileName: string,
     contentType: string,
-    folder: string = "scans"
+    folder: string = "scans",
   ): Promise<UploadResult> {
     const storagePath = `${folder}/${Date.now()}_${fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
@@ -47,7 +47,9 @@ export class StorageService {
 
         return {
           storagePath,
-          signedUrl: signedData?.signedUrl || `https://storage.supabase.co/${BUCKET_NAME}/${storagePath}`,
+          signedUrl:
+            signedData?.signedUrl ||
+            `https://storage.supabase.co/${BUCKET_NAME}/${storagePath}`,
           storageProvider: "supabase",
         };
       }
@@ -57,7 +59,10 @@ export class StorageService {
 
     // 2. Local File System Fallback
     await ensureLocalDir();
-    const localFilePath = path.join(LOCAL_STORAGE_DIR, path.basename(storagePath));
+    const localFilePath = path.join(
+      LOCAL_STORAGE_DIR,
+      path.basename(storagePath),
+    );
     await fs.writeFile(localFilePath, fileBuffer);
 
     // Return data URL or direct static path for offline demo preview
@@ -74,12 +79,17 @@ export class StorageService {
   /**
    * Gets signed URL for existing storage path
    */
-  static async getSignedUrl(storagePath: string): Promise<string> {
+  static async getSignedUrl(
+    storagePath: string,
+    contentType = "image/jpeg",
+  ): Promise<string> {
     if (storagePath.startsWith("local://")) {
       const fileName = storagePath.replace("local://", "");
       try {
-        const fileBuffer = await fs.readFile(path.join(LOCAL_STORAGE_DIR, fileName));
-        return `data:image/jpeg;base64,${fileBuffer.toString("base64")}`;
+        const fileBuffer = await fs.readFile(
+          path.join(LOCAL_STORAGE_DIR, fileName),
+        );
+        return `data:${contentType};base64,${fileBuffer.toString("base64")}`;
       } catch {
         return "";
       }
@@ -93,5 +103,28 @@ export class StorageService {
     } catch {
       return "";
     }
+  }
+
+  // Download File
+  static async downloadFile(storagePath: string): Promise<Buffer> {
+    if (storagePath.startsWith("local://")) {
+      const fileName = storagePath.replace("local://", "");
+
+      return fs.readFile(path.join(LOCAL_STORAGE_DIR, fileName));
+    }
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(BUCKET_NAME)
+      .download(storagePath);
+
+    if (error || !data) {
+      throw new Error(
+        `Failed to download stored image: ${
+          error?.message || "Unknown storage error"
+        }`,
+      );
+    }
+
+    return Buffer.from(await data.arrayBuffer());
   }
 }

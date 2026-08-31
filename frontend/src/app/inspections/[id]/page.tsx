@@ -161,12 +161,11 @@ export default function InspectionDetailPage({
 
   const analysis = scanData?.analysis;
   const scan = scanData?.scan;
-  const originalImage = scanData?.images?.find(
-    (i: any) => i.imageType === "ORIGINAL",
-  );
-  const preprocessedImage = scanData?.images?.find(
-    (i: any) => i.imageType === "PREPROCESSED",
-  );
+  const originalImages =
+    scanData?.images?.filter((i: any) => i.imageType === "ORIGINAL") || [];
+
+  const preprocessedImages =
+    scanData?.images?.filter((i: any) => i.imageType === "PREPROCESSED") || [];
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
@@ -246,36 +245,62 @@ export default function InspectionDetailPage({
                 <CardBody className="space-y-4">
                   <div className="bg-slate-900 rounded-xl p-4 flex items-center justify-center relative min-h-[380px] overflow-hidden">
                     {/* Packaging Mock Display */}
-                    <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-lg border border-slate-700 relative text-xs text-slate-800 space-y-3">
+                   {/* <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-lg border border-slate-700 relative text-xs text-slate-800 space-y-3">
                       <div className="border border-blue-500 bg-blue-500/10 p-1.5 rounded text-[11px] font-bold text-blue-900">
                         {analysis?.declarations?.generic_name?.value ??
                           "Not detected"}
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <div className="border border-emerald-600 bg-emerald-600/10 p-1 rounded font-bold text-emerald-900">
-                          [Net Qty] {analysis?.declarations?.net_quantity?.value ??
-                          "Not detected"}
+                          [Net Qty]{" "}
+                          {analysis?.declarations?.net_quantity?.value ??
+                            "Not detected"}
                         </div>
                         <div className="border border-emerald-600 bg-emerald-600/10 p-1 rounded font-bold text-emerald-900">
-                          [MRP] ₹{analysis?.declarations?.mrp?.value ?? "Not detected"} (Incl. of taxes)
+                          [MRP] ₹
+                          {analysis?.declarations?.mrp?.value ?? "Not detected"}{" "}
+                          (Incl. of taxes)
                         </div>
                       </div>
                       <div className="border border-slate-300 p-1 rounded text-[11px] text-slate-600">
-                        [Mfg Date] {analysis?.declarations?.date_of_manufacture?.value ??
+                        [Mfg Date]{" "}
+                        {analysis?.declarations?.date_of_manufacture?.value ??
                           "Not detected"}
                       </div>
                       <div className="border border-slate-300 p-1 rounded text-[11px] text-slate-600">
-                        [Manufacturer] {analysis?.declarations?.manufacturer?.value ??
+                        [Manufacturer]{" "}
+                        {analysis?.declarations?.manufacturer?.value ??
                           "Not detected"}
                       </div>
                       <div className="border border-blue-400 bg-blue-400/10 p-1 rounded text-[10px] text-slate-700">
-                        [Consumer Care] {analysis?.declarations?.consumer_care?.value ??
+                        [Consumer Care]{" "}
+                        {analysis?.declarations?.consumer_care?.value ??
                           "Not detected"}
                       </div>
                       <div className="border border-slate-300 p-1 rounded text-[10px] text-slate-700 font-semibold">
-                        [Country of Origin]  {analysis?.declarations?.country_of_origin?.value ??
+                        [Country of Origin]{" "}
+                        {analysis?.declarations?.country_of_origin?.value ??
                           "Not detected"}
                       </div>
+                    </div> */}
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {originalImages.map((image: any, index: number) => (
+                        <div
+                          key={image.id}
+                          className="bg-white rounded-lg border border-slate-200 overflow-hidden"
+                        >
+                          <img
+                            src={image.url}
+                            alt={`Package evidence ${index + 1}`}
+                            className="w-full h-64 object-contain bg-slate-100"
+                          />
+
+                          <div className="px-3 py-2 text-xs text-slate-600 border-t">
+                            Package Image {index + 1}
+                          </div>
+                        </div>
+                      ))}
                     </div>
 
                     {/* <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-lg border border-slate-700 relative text-xs text-slate-800 space-y-3">

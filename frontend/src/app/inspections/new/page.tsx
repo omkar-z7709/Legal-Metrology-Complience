@@ -33,8 +33,8 @@ const PIPELINE_STEPS = [
 
 export default function NewInspectionPage() {
   const router = useRouter();
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
   // Form Fields
   const [productName, setProductName] = useState("");
@@ -48,16 +48,53 @@ export default function NewInspectionPage() {
   const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setSelectedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-      if (!productName) {
-        setProductName(
-          file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
-        );
-      }
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) return;
+
+    const validFiles = files.filter((file) =>
+      ["image/jpeg", "image/png", "image/webp", "image/jpg"].includes(
+        file.type,
+      ),
+    );
+
+    if (validFiles.length !== files.length) {
+      setError("Only JPG, PNG, and WebP images are allowed.");
+    } else {
+      setError(null);
     }
+
+    if (validFiles.length === 0) return;
+
+    // ADD to existing selection instead of replacing it
+    setSelectedFiles((previous) => {
+      const existingKeys = new Set(
+        previous.map(
+          (file) => `${file.name}-${file.size}-${file.lastModified}`,
+        ),
+      );
+
+      const newFiles = validFiles.filter(
+        (file) =>
+          !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`),
+      );
+
+      return [...previous, ...newFiles];
+    });
+
+    setPreviewUrls((previous) => [
+      ...previous,
+      ...validFiles.map((file) => URL.createObjectURL(file)),
+    ]);
+
+    if (!productName) {
+      setProductName(
+        validFiles[0].name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
+      );
+    }
+
+    // Allow selecting the same file again later
+    e.target.value = "";
   };
 
   const handleSampleFill = () => {
@@ -67,12 +104,26 @@ export default function NewInspectionPage() {
     setLocation("Zonal Inspection Field Office");
   };
 
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((previous) => previous.filter((_, i) => i !== index));
+
+    setPreviewUrls((previous) => {
+      const urlToRemove = previous[index];
+
+      if (urlToRemove) {
+        URL.revokeObjectURL(urlToRemove);
+      }
+
+      return previous.filter((_, i) => i !== index);
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (isProcessing) return;
 
-    if (!selectedFile) {
+    if (selectedFiles.length === 0) {
       setError("Please select or drop a commodity package image.");
       return;
     }
@@ -84,11 +135,32 @@ export default function NewInspectionPage() {
     try {
       // Step 1 & 2: Upload
       const formData = new FormData();
-      formData.append("file", selectedFile);
+      selectedFiles.forEach((file) => {
+        formData.append("files", file);
+      });
+
+      console.log(
+        "[UPLOAD] FormData files:",
+        Array.from(formData.getAll("files")).map((file: any) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        })),
+      );
+
       formData.append("productName", productName || "Sample Commodity");
       formData.append("category", category);
       formData.append("brand", brand);
       formData.append("location", location);
+
+      console.log(
+        "[UPLOAD] Selected files:",
+        selectedFiles.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        })),
+      );
 
       const uploadRes = await fetch(`${API_BASE_URL}/api/scans/upload`, {
         method: "POST",
@@ -241,24 +313,37 @@ export default function NewInspectionPage() {
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
+                        multiple
                         onChange={handleFileChange}
                         className="hidden"
                       />
 
-                      {previewUrl ? (
-                        <div className="space-y-3 text-center">
-                          <img
-                            src={previewUrl}
-                            alt="Package Preview"
-                            className="max-h-48 max-w-full rounded-lg object-contain mx-auto border border-slate-200"
-                          />
-                          <div className="text-xs text-slate-500 font-medium">
-                            {selectedFile?.name} (
-                            {(selectedFile!.size / 1024).toFixed(0)} KB)
-                          </div>
-                          <span className="inline-block text-xs text-blue-600 hover:underline">
-                            Click to replace image
-                          </span>
+                      {previewUrls.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+                          {previewUrls.map((url, index) => (
+                            <div
+                              key={`${url}-${index}`}
+                              className="relative border border-slate-200 rounded-lg overflow-hidden bg-slate-50"
+                            >
+                              <img
+                                src={url}
+                                alt={`Package image ${index + 1}`}
+                                className="w-full h-40 object-contain"
+                              />
+
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFile(index)}
+                                className="absolute top-2 right-2 bg-white/90 rounded-full px-2 py-1 text-xs text-red-600"
+                              >
+                                Remove
+                              </button>
+
+                              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1">
+                                Image {index + 1}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       ) : (
                         <>
@@ -275,6 +360,25 @@ export default function NewInspectionPage() {
                             Browse Files
                           </span>
                         </>
+                      )}
+
+                      {previewUrls.length > 0 && (
+                        <div className="mt-4">
+                          <label
+                            htmlFor="package-images"
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                          >
+                            <Upload className="w-4 h-4" />
+                            Add More Images
+                          </label>
+                        </div>
+                      )}
+
+                      {selectedFiles.length > 0 && (
+                        <p className="text-sm text-slate-600 mt-2">
+                          {selectedFiles.length} package image
+                          {selectedFiles.length !== 1 ? "s" : ""} selected
+                        </p>
                       )}
                     </label>
 
@@ -371,7 +475,7 @@ export default function NewInspectionPage() {
                   type="submit"
                   variant="primary"
                   size="lg"
-                  disabled={!selectedFile || isProcessing}
+                  disabled={selectedFiles.length == 0 || isProcessing}
                   icon={<ScanSearch className="w-5 h-5" />}
                 >
                   Analyze Commodity Compliance

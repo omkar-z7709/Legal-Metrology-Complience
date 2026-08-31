@@ -3,6 +3,7 @@ import { authenticate } from "../middleware/auth.js";
 import { StorageService } from "../services/storage.service.js";
 import { PreprocessService } from "../services/preprocess.service.js";
 import { DBRepo } from "../db/repo.js";
+import { OcrService } from "../services/ocr/ocr.service.js";
 
 export const scanRoutes: FastifyPluginAsync = async (
   fastify: FastifyInstance,
@@ -12,69 +13,100 @@ export const scanRoutes: FastifyPluginAsync = async (
     "/scans/upload",
     { preHandler: [authenticate] },
     async (request, reply) => {
-      const data = await request.file({
+      const files: {
+        buffer: Buffer;
+        filename: string;
+        mimetype: string;
+      }[] = [];
+
+      let productName = "Unlabeled Commodity Sample";
+      let category = "Packaged Food";
+      let brand = "";
+      let location = "Inspection Field Office";
+
+      const parts = request.parts({
         limits: {
-          fileSize: 20 * 1024 * 1024, // 20 MB max
+          fileSize: 20 * 1024 * 1024,
+          files: 10,
         },
       });
 
-      if (!data) {
+      for await (const part of parts) {
+        if (part.type === "file") {
+          const allowedMimeTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+            "image/jpg",
+          ];
+
+          if (!allowedMimeTypes.includes(part.mimetype)) {
+            return reply.status(400).send({
+              success: false,
+              error: {
+                code: "INVALID_FILE_TYPE",
+                message: `Unsupported file format: ${part.mimetype}`,
+              },
+            });
+          }
+
+          const buffer = await part.toBuffer();
+
+          files.push({
+            buffer,
+            filename: part.filename || `package_${files.length + 1}.jpg`,
+            mimetype: part.mimetype,
+          });
+        } else {
+          const value = part.value;
+
+          if (part.fieldname === "productName") {
+            productName = String(value);
+          }
+
+          if (part.fieldname === "category") {
+            category = String(value);
+          }
+
+          if (part.fieldname === "brand") {
+            brand = String(value);
+          }
+
+          if (part.fieldname === "location") {
+            location = String(value);
+          }
+        }
+      }
+
+      console.log(
+        `[UPLOAD] Received ${files.length} files:`,
+        files.map((file) => file.filename),
+      );
+
+      if (files.length === 0) {
         return reply.status(400).send({
           success: false,
           error: {
             code: "FILE_MISSING",
-            message: "No image file provided in multipart payload.",
+            message: "At least one package image is required.",
           },
         });
       }
 
-      const allowedMimeTypes = [
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-        "image/jpg",
-      ];
-      if (!allowedMimeTypes.includes(data.mimetype)) {
-        return reply.status(400).send({
-          success: false,
-          error: {
-            code: "INVALID_FILE_TYPE",
-            message: `Unsupported file format: ${data.mimetype}. Allowed: JPEG, PNG, WebP.`,
-          },
+      // Continue with product + scan creation...
+      const processedImages = [];
+
+      for (const file of files) {
+        const preprocessResult = await PreprocessService.preprocess(
+          file.buffer,
+        );
+
+        processedImages.push({
+          ...file,
+          preprocessResult,
         });
       }
 
-      const fileBuffer = await data.toBuffer();
-      const originalFileName = data.filename || "package_image.jpg";
-      const fileSizeBytes = fileBuffer.length;
-
-      // Optional metadata from fields
-      const fields: any = data.fields;
-      const productName =
-        fields?.productName?.value || "Unlabeled Commodity Sample";
-      const category = fields?.category?.value || "Packaged Food";
-      const brand = fields?.brand?.value || "Standard Brand";
-      const location = fields?.location?.value || "Inspection Field Office";
-
-      // 1. Preprocess Image for OCR optimization
-      const preprocessResult = await PreprocessService.preprocess(fileBuffer);
-
-      // 2. Upload Original & Preprocessed Images
-      const originalUpload = await StorageService.uploadFile(
-        fileBuffer,
-        `orig_${originalFileName}`,
-        data.mimetype,
-        "scans/original",
-      );
-
-      const processedUpload = await StorageService.uploadFile(
-        preprocessResult.processedBuffer,
-        `prep_${originalFileName}.jpg`,
-        "image/jpeg",
-        "scans/preprocessed",
-      );
-
-      // 3. Create Product Record via DBRepo
       const createdProduct = await DBRepo.insertProduct({
         name: productName,
         brand,
@@ -82,8 +114,10 @@ export const scanRoutes: FastifyPluginAsync = async (
         commodityType: "Solid/Liquid",
       });
 
-      // 4. Create Scan Record
-      const scanNumber = `INS-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+      const scanNumber = `INS-${new Date().getFullYear()}-${Math.floor(
+        100000 + Math.random() * 900000,
+      )}`;
+
       const createdScan = await DBRepo.insertScan({
         productId: createdProduct.id,
         inspectorId:
@@ -97,26 +131,48 @@ export const scanRoutes: FastifyPluginAsync = async (
         complianceScore: "0.00",
       });
 
-      // 5. Store Image Records
-      await DBRepo.insertImage({
-        scanId: createdScan.id,
-        imageType: "ORIGINAL",
-        storagePath: originalUpload.storagePath,
-        fileName: originalFileName,
-        contentType: data.mimetype,
-        fileSizeBytes,
-      });
+      const storedImages = [];
 
-      await DBRepo.insertImage({
-        scanId: createdScan.id,
-        imageType: "PREPROCESSED",
-        storagePath: processedUpload.storagePath,
-        fileName: `preprocessed_${originalFileName}`,
-        contentType: "image/jpeg",
-        fileSizeBytes: preprocessResult.processedBuffer.length,
-        width: preprocessResult.width,
-        height: preprocessResult.height,
-      });
+      for (const image of processedImages) {
+        const originalUpload = await StorageService.uploadFile(
+          image.buffer,
+          `orig_${image.filename}`,
+          image.mimetype,
+          "scans/original",
+        );
+
+        const processedUpload = await StorageService.uploadFile(
+          image.preprocessResult.processedBuffer,
+          `prep_${image.filename}.jpg`,
+          "image/jpeg",
+          "scans/preprocessed",
+        );
+
+        const originalRecord = await DBRepo.insertImage({
+          scanId: createdScan.id,
+          imageType: "ORIGINAL",
+          storagePath: originalUpload.storagePath,
+          fileName: image.filename,
+          contentType: image.mimetype,
+          fileSizeBytes: image.buffer.length,
+        });
+
+        const processedRecord = await DBRepo.insertImage({
+          scanId: createdScan.id,
+          imageType: "PREPROCESSED",
+          storagePath: processedUpload.storagePath,
+          fileName: `preprocessed_${image.filename}`,
+          contentType: "image/jpeg",
+          fileSizeBytes: image.preprocessResult.processedBuffer.length,
+          width: image.preprocessResult.width,
+          height: image.preprocessResult.height,
+        });
+
+        storedImages.push({
+          original: originalRecord,
+          preprocessed: processedRecord,
+        });
+      }
 
       return reply.status(201).send({
         success: true,
@@ -124,22 +180,7 @@ export const scanRoutes: FastifyPluginAsync = async (
           scanId: createdScan.id,
           scanNumber: createdScan.scanNumber,
           productId: createdProduct.id,
-          productName: createdProduct.name,
-          status: createdScan.status,
-          images: {
-            original: {
-              storagePath: originalUpload.storagePath,
-              url: originalUpload.signedUrl,
-              sizeBytes: fileSizeBytes,
-            },
-            preprocessed: {
-              storagePath: processedUpload.storagePath,
-              url: processedUpload.signedUrl,
-              width: preprocessResult.width,
-              height: preprocessResult.height,
-              transformations: preprocessResult.appliedTransformations,
-            },
-          },
+          images: storedImages,
         },
       });
     },
@@ -164,6 +205,16 @@ export const scanRoutes: FastifyPluginAsync = async (
       }
 
       const scanImages = await DBRepo.getScanImages(scan.id);
+
+      const imagesWithUrls = await Promise.all(
+        scanImages.map(async (image: any) => ({
+          ...image,
+          url: await StorageService.getSignedUrl(
+            image.storagePath,
+            image.contentType,
+          ),
+        })),
+      );
       const extractedFields = await DBRepo.getScanExtractedFields(scan.id);
       const complianceChecks = await DBRepo.getScanComplianceChecks(scan.id);
       const violations = await DBRepo.getScanViolations(scan.id);
@@ -172,9 +223,8 @@ export const scanRoutes: FastifyPluginAsync = async (
         success: true,
         data: {
           scan,
-          images: scanImages,
+          images: imagesWithUrls,
           analysis: scan.analysis || null,
-
           extractedFields,
           complianceChecks,
           violations,
@@ -219,36 +269,82 @@ export const scanRoutes: FastifyPluginAsync = async (
       }
 
       const scanImages = await DBRepo.getScanImages(scan.id);
+
       const targetImage =
         scanImages.find((img) => img.imageType === "PREPROCESSED") ||
         scanImages[0];
 
       // Read image buffer from storage or create placeholder buffer
-      let imageBuffer: Buffer = Buffer.from("packaged_commodity_sample_image");
-      if (targetImage && targetImage.storagePath) {
-        if (targetImage.storagePath.startsWith("local://")) {
-          const localPath = targetImage.storagePath.replace("local://", "");
-          try {
-            const fs = await import("fs/promises");
-            const path = await import("path");
-            imageBuffer = await fs.readFile(
-              path.resolve(process.cwd(), "uploads", localPath),
-            );
-          } catch {}
-        }
+
+      const processedImages = scanImages.filter(
+        (img) => img.imageType === "PREPROCESSED",
+      );
+
+      if (processedImages.length === 0) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "NO_IMAGES",
+            message: "No preprocessed images found.",
+          },
+        });
       }
 
-      // Execute OCR extraction
-      const { OcrService } = await import("../services/ocr/ocr.service.js");
-      const ocrResult = await OcrService.extract(imageBuffer);
+      const ocrResults = [];
+
+      for (const image of processedImages) {
+        const imageBuffer = await StorageService.downloadFile(
+          image.storagePath,
+        );
+
+        const result = await OcrService.extract(imageBuffer);
+
+        ocrResults.push(result);
+      }
+
+      const combinedText = ocrResults
+        .map(
+          (result, index) =>
+            `--- PACKAGE IMAGE ${index + 1} ---\n${result.rawText}`,
+        )
+        .join("\n\n");
 
       return reply.status(200).send({
         success: true,
         data: {
           scanId: scan.id,
-          ocr: ocrResult,
+          ocr: {
+            rawText: combinedText,
+            results: ocrResults,
+          },
         },
       });
+
+      // let imageBuffer: Buffer = Buffer.from("packaged_commodity_sample_image");
+      // if (targetImage && targetImage.storagePath) {
+      //   if (targetImage.storagePath.startsWith("local://")) {
+      //     const localPath = targetImage.storagePath.replace("local://", "");
+      //     try {
+      //       const fs = await import("fs/promises");
+      //       const path = await import("path");
+      //       imageBuffer = await fs.readFile(
+      //         path.resolve(process.cwd(), "uploads", localPath),
+      //       );
+      //     } catch {}
+      //   }
+      // }
+
+      // // Execute OCR extraction
+      // const { OcrService } = await import("../services/ocr/ocr.service.js");
+      // const ocrResult = await OcrService.extract(imageBuffer);
+
+      // return reply.status(200).send({
+      //   success: true,
+      //   data: {
+      //     scanId: scan.id,
+      //     ocr: ocrResult,
+      //   },
+      // });
     },
   );
 };

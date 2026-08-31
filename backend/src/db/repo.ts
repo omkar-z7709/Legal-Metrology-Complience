@@ -210,11 +210,27 @@ export class DBRepo {
   static async insertImage(data: any) {
     if (await isDatabaseLive()) {
       try {
-        await db.insert(images).values(data);
-      } catch {}
+        const [created] = await db.insert(images).values(data).returning();
+
+        if (created) {
+          return created;
+        }
+      } catch (error) {
+        console.error("[DB] Failed to insert image:", error);
+      }
     }
+
     const id = crypto.randomUUID();
-    memoryStore.images.set(id, { id, ...data, createdAt: new Date() });
+
+    const record = {
+      id,
+      ...data,
+      createdAt: new Date(),
+    };
+
+    memoryStore.images.set(id, record);
+
+    return record;
   }
 
   static async getScanImages(scanId: string) {

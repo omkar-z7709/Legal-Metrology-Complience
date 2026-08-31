@@ -28,38 +28,26 @@ export default function ProductsListPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const sampleProducts = products.length > 0 ? products : [
-    {
-      id: "prod-001",
-      name: "SunPure Kachi Ghani Mustard Oil (1L)",
-      brand: "SunPure",
-      category: "Edible Oils",
-      commodityType: "Liquid",
-      manufacturerName: "SunPure Edibles Pvt. Ltd.",
-      totalInspections: 3,
-      latestStatus: "COMPLIANT",
-    },
-    {
-      id: "prod-002",
-      name: "Deficient Spice Mix (500g)",
-      brand: "QuickPack",
-      category: "Food",
-      commodityType: "Solid",
-      manufacturerName: "Quick Pack Commodities Ltd",
-      totalInspections: 2,
-      latestStatus: "NON_COMPLIANT",
-    },
-    {
-      id: "prod-003",
-      name: "Organic Turmeric Powder 500g",
-      brand: "Vedic Roots",
-      category: "Spices & Condiments",
-      commodityType: "Solid",
-      manufacturerName: "Vedic Agri Industries",
-      totalInspections: 1,
-      latestStatus: "REQUIRES_REVIEW",
-    }
-  ];
+  if (products.length < 1) {
+        return (
+          <div className="flex min-h-screen bg-[#F8FAFC]">
+            <Sidebar />
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-xs text-slate-500 font-medium">
+                  Loading product records...
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+  const sampleProducts = products;
+ 
+    
+    
 
   const filteredProducts = sampleProducts.filter(
     (p) =>

@@ -1,11 +1,13 @@
 import { DBRepo } from "../../db/repo.js";
 import { OcrService } from "../ocr/ocr.service.js";
+import { StorageService } from "../storage.service.js";
 import { GeminiExtractor } from "../extraction/gemini.extractor.js";
 import { ProductClassifier } from "../classification/classifier.service.js";
 import {
   ComplianceDecisionEngine,
   ComplianceDecision,
 } from "../engine/decision.engine.js";
+import { OcrResult } from "../ocr/ocr.interface.js";
 import fs from "fs/promises";
 import path from "path";
 
@@ -21,27 +23,67 @@ export class InspectionPipelineService {
     if (!scan) throw new Error(`Scan with ID '${scanId}' not found.`);
 
     const scanImages = await DBRepo.getScanImages(scanId);
-    const processedImage =
-      scanImages.find((img) => img.imageType === "PREPROCESSED") ||
-      scanImages[0];
+    const processedImages = scanImages.filter(
+      (img) => img.imageType === "PREPROCESSED",
+    );
 
-    // Load Image Buffer
-    let imageBuffer: Buffer;
-    if (processedImage?.storagePath?.startsWith("local://")) {
-      const filePath = path.join(
-        process.cwd(),
-        "uploads",
-        processedImage.storagePath.replace("local://", ""),
-      );
-      imageBuffer = await fs
-        .readFile(filePath)
-        .catch(() => Buffer.from("image placeholder"));
-    } else {
-      imageBuffer = Buffer.from("image placeholder");
+    if (processedImages.length === 0) {
+      throw new Error("No preprocessed images found for this scan.");
     }
 
+    const ocrResults = [];
+
+    for (const image of processedImages) {
+      const imageBuffer = await StorageService.downloadFile(image.storagePath);
+
+      const result = await OcrService.extract(imageBuffer);
+
+      ocrResults.push(result);
+    }
+
+    const combinedOcrText = ocrResults
+      .map(
+        (result, index) =>
+          `--- PACKAGE IMAGE ${index + 1} ---\n${result.rawText}`,
+      )
+      .join("\n\n");
+
+    // Load Image Buffer
+    // let imageBuffer: Buffer;
+    // if (processedImage?.storagePath?.startsWith("local://")) {
+    //   const filePath = path.join(
+    //     process.cwd(),
+    //     "uploads",
+    //     processedImage.storagePath.replace("local://", ""),
+    //   );
+    //   imageBuffer = await fs
+    //     .readFile(filePath)
+    //     .catch(() => Buffer.from("image placeholder"));
+    // } else {
+    //   imageBuffer = Buffer.from("image placeholder");
+    // }
+
     // 2. Execute OCR Pipeline (Module 5)
-    const ocrResult = await OcrService.extract(imageBuffer);
+    const provider: OcrResult["provider"] = ocrResults.every(
+      (r) => r.provider === "google-cloud-vision",
+    )
+      ? "google-cloud-vision"
+      : ocrResults.every((r) => r.provider === "tesseract")
+        ? "tesseract"
+        : "synthetic";
+
+    const ocrResult: OcrResult = {
+      rawText: combinedOcrText,
+      averageConfidence:
+        ocrResults.reduce((sum, r) => sum + r.averageConfidence, 0) /
+        ocrResults.length,
+      lines: ocrResults.flatMap((r) => r.lines),
+      provider,
+      processingTimeMs: ocrResults.reduce(
+        (sum, r) => sum + r.processingTimeMs,
+        0,
+      ),
+    };
 
     // 3. Gemini Structured Extraction (Module 6)
     const declarations = await GeminiExtractor.extractDeclarations(ocrResult);

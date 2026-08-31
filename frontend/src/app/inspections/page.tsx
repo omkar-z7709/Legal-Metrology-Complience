@@ -37,6 +37,22 @@ export default function InspectionsListPage() {
     return matchesSearch && matchesFilter;
   });
 
+  if (filteredScans.length < 1) {
+          return (
+            <div className="flex min-h-screen bg-[#F8FAFC]">
+              <Sidebar />
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center space-y-3">
+                  <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p className="text-xs text-slate-500 font-medium">
+                    Loading inspection records...
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
       <Sidebar />
@@ -74,6 +90,7 @@ export default function InspectionsListPage() {
                 className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
               />
             </div>
+
 
             <div className="flex items-center gap-2 text-xs w-full md:w-auto">
               <span className="text-slate-500 font-medium">Filter Status:</span>
