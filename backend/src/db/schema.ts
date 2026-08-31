@@ -9,8 +9,12 @@ import {
   jsonb,
   uuid,
   pgEnum,
+  vector,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+
+
+
 
 // Enums
 export const roleEnum = pgEnum("user_role", ["INSPECTOR", "SUPERVISOR", "ADMIN"]);
@@ -211,3 +215,14 @@ export const reportsRelations = relations(reports, ({ one }) => ({
   scan: one(scans, { fields: [reports.scanId], references: [scans.id] }),
   generator: one(users, { fields: [reports.generatedBy], references: [users.id] }),
 }));
+
+
+
+
+export const ruleEmbeddings = pgTable("rule_embeddings", {
+  id: uuid("id").primaryKey(),
+  ruleId: varchar("rule_id", { length: 100 }).notNull().references(() => rules.id),
+  chunkIndex: integer("chunk_index").notNull(),
+  content: text("content").notNull(),
+  embedding: vector("embedding", { dimensions: 768 }),
+});
