@@ -243,7 +243,7 @@ Extract the declarations from this OCR text.
 Follow the exact JSON structure and extraction rules provided in the system instruction.
 `;
         const callPromise = this.ai.models.generateContent({
-          model: "gemini-3.6-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             systemInstruction: EXTRACTION_SYSTEM_PROMPT,
