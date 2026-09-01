@@ -242,8 +242,10 @@ Extract the declarations from this OCR text.
 
 Follow the exact JSON structure and extraction rules provided in the system instruction.
 `;
+        const modelName = process.env.GEMINI_MODEL || "gemini-3.7-flash";
+        console.log(`[GEMINI] Calling model '${modelName}' for declaration extraction`);
         const callPromise = this.ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: modelName,
           contents: prompt,
           config: {
             systemInstruction: EXTRACTION_SYSTEM_PROMPT,
@@ -251,36 +253,38 @@ Follow the exact JSON structure and extraction rules provided in the system inst
           },
         });
 
-        const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 15000);
+        const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 25000);
 
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(
             () =>
-              reject(new Error("Gemini request timeout (offline fallback)")),
+              reject(new Error(`Gemini request timeout after ${timeoutMs}ms (offline fallback)`)),
             timeoutMs,
           ),
         );
 
         const response: any = await Promise.race([callPromise, timeoutPromise]);
 
-        console.log("\n========== GEMINI RESPONSE ==========");
-        console.dir(response, { depth: null });
-        console.log("=====================================\n");
+        let rawJsonText =
+          typeof response.text === "function"
+            ? response.text()
+            : typeof response.text === "string"
+              ? response.text
+              : response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
-        const rawJsonText = response.text || "{}";
-        console.log("\n========== GEMINI RAW TEXT ==========");
-        console.log(rawJsonText);
-        console.log("=====================================\n");
+        // Strip markdown code fences if model wrapped in ```json ... ```
+        rawJsonText = rawJsonText
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/\s*```$/i, "")
+          .trim();
 
         const parsedJson = JSON.parse(rawJsonText);
         const validated = structuredDeclarationsSchema.parse(parsedJson);
-        console.log("\n========== GEMINI VALIDATED ==========");
-        console.dir(validated, { depth: null });
-        console.log("======================================\n");
+        console.log(`[GEMINI] Successfully extracted and validated structured declarations.`);
         return validated;
       } catch (err: any) {
         console.warn(
-          `[Gemini Extraction] Notice: ${err.message}. Using deterministic fallback parser.`,
+          `[GEMINI] Notice: ${err.message}. Using deterministic fallback parser.`,
         );
       }
     }

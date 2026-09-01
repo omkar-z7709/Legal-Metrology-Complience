@@ -13,6 +13,7 @@ const envSchema = z.object({
   SUPABASE_ANON_KEY: z.string().min(1).default("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.fake_anon_key_for_dev_placeholder"),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).default("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.fake_service_key_for_dev_placeholder"),
   GEMINI_API_KEY: z.string().default(""),  // Required for embedding + RAG
+  GEMINI_MODEL: z.string().default("gemini-3.7-flash"),
 });
 
 export type Env = z.infer<typeof envSchema>;

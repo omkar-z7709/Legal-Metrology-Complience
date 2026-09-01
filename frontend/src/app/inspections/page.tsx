@@ -14,6 +14,7 @@ export default function InspectionsListPage() {
   const [scans, setScans] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/scans`, {
@@ -25,7 +26,8 @@ export default function InspectionsListPage() {
           setScans(data.data.scans);
         }
       })
-      .catch(() => {});
+      .catch((err) => console.error("[FRONTEND] Error loading scans:", err))
+      .finally(() => setLoading(false));
   }, []);
 
   const filteredScans = scans.filter((s) => {
@@ -37,21 +39,21 @@ export default function InspectionsListPage() {
     return matchesSearch && matchesFilter;
   });
 
-  if (filteredScans.length < 1) {
-          return (
-            <div className="flex min-h-screen bg-[#F8FAFC]">
-              <Sidebar />
-              <div className="flex-1 flex items-center justify-center">
-                <div className="text-center space-y-3">
-                  <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-xs text-slate-500 font-medium">
-                    Loading inspection records...
-                  </p>
-                </div>
-              </div>
-            </div>
-          );
-        }
+  if (loading) {
+    return (
+      <div className="flex min-h-screen bg-[#F8FAFC]">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs text-slate-500 font-medium">
+              Loading inspection records...
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">

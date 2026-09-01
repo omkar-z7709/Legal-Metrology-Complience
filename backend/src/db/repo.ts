@@ -22,6 +22,11 @@ async function isDatabaseLive(): Promise<boolean> {
   if (isLiveDbReachable !== null) return isLiveDbReachable;
   const status = await checkPostgresConnection();
   isLiveDbReachable = status.connected;
+  if (!status.connected) {
+    console.warn(`[DATABASE] Postgres not reachable (${status.error || "connection failed"}). Operating in resilient fallback mode.`);
+  } else {
+    console.log(`[DATABASE] Postgres connected successfully (latency: ${status.latencyMs}ms).`);
+  }
   return isLiveDbReachable;
 }
 
@@ -54,7 +59,9 @@ export class DBRepo {
           .where(eq(complianceChecks.scanId, scanId));
 
         if (list.length > 0) return list;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching scan compliance checks:", err.message);
+      }
     }
 
     return Array.from(memoryStore.complianceChecks.values()).filter(
@@ -282,12 +289,14 @@ export class DBRepo {
   }
 
   static async insertExtractedField(data: any) {
+    const id = crypto.randomUUID();
     if (await isDatabaseLive()) {
       try {
-        await db.insert(extractedFields).values(data);
-      } catch {}
+        await db.insert(extractedFields).values({ id, ...data });
+      } catch (err: any) {
+        console.error("[DATABASE] Failed to insert extracted field:", err.message);
+      }
     }
-    const id = crypto.randomUUID();
     memoryStore.extractedFields.set(id, { id, ...data, createdAt: new Date() });
   }
 
@@ -299,7 +308,9 @@ export class DBRepo {
           .from(extractedFields)
           .where(eq(extractedFields.scanId, scanId));
         if (list.length > 0) return list;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching extracted fields:", err.message);
+      }
     }
     return Array.from(memoryStore.extractedFields.values()).filter(
       (f) => f.scanId === scanId,
@@ -315,7 +326,9 @@ export class DBRepo {
           .values({ id, ...data })
           .returning();
         if (created) return created;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Failed to insert compliance check:", err.message);
+      }
     }
     const record = { id, ...data, createdAt: new Date() };
     memoryStore.complianceChecks.set(id, record);
@@ -327,7 +340,9 @@ export class DBRepo {
     if (await isDatabaseLive()) {
       try {
         await db.insert(violations).values({ id, ...data });
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Failed to insert violation:", err.message);
+      }
     }
     memoryStore.violations.set(id, { id, ...data, createdAt: new Date() });
   }
@@ -340,7 +355,9 @@ export class DBRepo {
           .from(violations)
           .where(eq(violations.scanId, scanId));
         if (list.length > 0) return list;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching violations:", err.message);
+      }
     }
     return Array.from(memoryStore.violations.values()).filter(
       (v) => v.scanId === scanId,
@@ -352,7 +369,9 @@ export class DBRepo {
       try {
         const list = await db.select().from(violations);
         if (list.length > 0) return list;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching all violations:", err.message);
+      }
     }
     return Array.from(memoryStore.violations.values());
   }
@@ -365,7 +384,9 @@ export class DBRepo {
           .from(products)
           .orderBy(desc(products.createdAt));
         if (list.length > 0) return list;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching all products:", err.message);
+      }
     }
     return Array.from(memoryStore.products.values()).sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
@@ -381,7 +402,9 @@ export class DBRepo {
           .values({ id, ...data })
           .returning();
         if (created) return created;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Failed to insert report:", err.message);
+      }
     }
     const record = { id, ...data, generatedAt: new Date() };
     memoryStore.reports.set(id, record);
@@ -393,7 +416,9 @@ export class DBRepo {
     if (await isDatabaseLive()) {
       try {
         await db.insert(auditLogs).values({ id, ...data });
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Failed to insert audit log:", err.message);
+      }
     }
     memoryStore.auditLogs.set(id, { id, ...data, timestamp: new Date() });
   }
@@ -406,7 +431,9 @@ export class DBRepo {
           .from(auditLogs)
           .orderBy(desc(auditLogs.timestamp));
         if (list.length > 0) return list;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching audit logs:", err.message);
+      }
     }
     return Array.from(memoryStore.auditLogs.values()).sort(
       (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),

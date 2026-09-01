@@ -26,7 +26,6 @@ node_modules/
 credentials/
 **/credentials/
 
-*.json
 **/*-key.json
 **/*service-account*.json
 **/*credentials*.json

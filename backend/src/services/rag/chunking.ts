@@ -2,11 +2,16 @@ import { readFileSync } from "fs";
 import { randomUUID } from "crypto";
 import { db } from "../../db/index.js";
 import { rules } from "../../db/schema.js";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
-
 /** Extracts all text from a PDF buffer using pdfjs-dist. */
 async function parsePdf(buf: Buffer): Promise<{ text: string }> {
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buf) });
+  let pdfjsLib: any;
+  try {
+    pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  } catch {
+    pdfjsLib = await import("pdfjs-dist");
+  }
+  const getDocument = pdfjsLib.getDocument || (pdfjsLib.default && pdfjsLib.default.getDocument);
+  const loadingTask = getDocument({ data: new Uint8Array(buf) });
   const pdf = await loadingTask.promise;
   const pageTexts: string[] = [];
 
@@ -14,7 +19,7 @@ async function parsePdf(buf: Buffer): Promise<{ text: string }> {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     const pageText = content.items
-      .map((item) => ("str" in item ? item.str : ""))
+      .map((item: any) => ("str" in item ? item.str : ""))
       .join(" ");
     pageTexts.push(pageText);
   }

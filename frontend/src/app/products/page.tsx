@@ -28,32 +28,27 @@ export default function ProductsListPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (products.length < 1) {
-        return (
-          <div className="flex min-h-screen bg-[#F8FAFC]">
-            <Sidebar />
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-3">
-                <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-xs text-slate-500 font-medium">
-                  Loading product records...
-                </p>
-              </div>
-            </div>
+  if (loading) {
+    return (
+      <div className="flex min-h-screen bg-[#F8FAFC]">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs text-slate-500 font-medium">
+              Loading product records...
+            </p>
           </div>
-        );
-      }
+        </div>
+      </div>
+    );
+  }
 
-  const sampleProducts = products;
- 
-    
-    
-
-  const filteredProducts = sampleProducts.filter(
+  const filteredProducts = products.filter(
     (p) =>
       p.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.category?.toLowerCase().includes(searchTerm.toLowerCase())
+      p.category?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
@@ -100,34 +95,42 @@ export default function ProductsListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {filteredProducts.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3.5">
-                        <div className="font-semibold text-slate-900">{p.name}</div>
-                        <div className="text-[11px] text-slate-500">{p.brand || "Unbranded"}</div>
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium">
-                          {p.category}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3.5 text-slate-600">
-                        {p.manufacturerName || "Declared on Packaging"}
-                      </td>
-                      <td className="px-6 py-3.5 text-center">
-                        <span className="font-mono font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200">
-                          {p.totalInspections || 1} Scans
-                        </span>
-                      </td>
-                      <td className="px-6 py-3.5 text-right">
-                        <Link href={`/products/${p.id}`}>
-                          <Button variant="secondary" size="sm" icon={<History className="w-3.5 h-3.5" />}>
-                            View Timeline
-                          </Button>
-                        </Link>
+                  {filteredProducts.length > 0 ? (
+                    filteredProducts.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-3.5">
+                          <div className="font-semibold text-slate-900">{p.name}</div>
+                          <div className="text-[11px] text-slate-500">{p.brand || "Unbranded"}</div>
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <span className="px-2 py-0.5 bg-slate-100 rounded text-slate-700 font-medium">
+                            {p.category}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5 text-slate-600">
+                          {p.manufacturerName || "Declared on Packaging"}
+                        </td>
+                        <td className="px-6 py-3.5 text-center">
+                          <span className="font-mono font-bold px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200">
+                            {p.totalInspections || 1} Scans
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5 text-right">
+                          <Link href={`/products/${p.id}`}>
+                            <Button variant="secondary" size="sm" icon={<History className="w-3.5 h-3.5" />}>
+                              View Timeline
+                            </Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                        No commodity products recorded yet.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>

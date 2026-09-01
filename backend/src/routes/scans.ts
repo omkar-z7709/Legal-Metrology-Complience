@@ -126,68 +126,58 @@ export const scanRoutes: FastifyPluginAsync = async (
         complianceScore: "0.00",
       });
 
-      // const storedImages = [];
+      console.log(
+        `[UPLOAD] Received ${files.length} package image(s) for product '${productName}'`
+      );
 
-      // for (const image of processedImages) {
-      //   const originalUpload = await StorageService.uploadFile(
-      //     image.buffer,
-      //     `orig_${image.filename}`,
-      //     image.mimetype,
-      //     "scans/original",
-      //   );
-
-      //   const processedUpload = await StorageService.uploadFile(
-      //     image.preprocessResult.processedBuffer,
-      //     `prep_${image.filename}.jpg`,
-      //     "image/jpeg",
-      //     "scans/preprocessed",
-      //   );
-
-      //   const originalRecord = await DBRepo.insertImage({
-      //     scanId: createdScan.id,
-      //     imageType: "ORIGINAL",
-      //     storagePath: originalUpload.storagePath,
-      //     fileName: image.filename,
-      //     contentType: image.mimetype,
-      //     fileSizeBytes: image.buffer.length,
-      //   });
-
-      //   const processedRecord = await DBRepo.insertImage({
-      //     scanId: createdScan.id,
-      //     imageType: "PREPROCESSED",
-      //     storagePath: processedUpload.storagePath,
-      //     fileName: `preprocessed_${image.filename}`,
-      //     contentType: "image/jpeg",
-      //     fileSizeBytes: image.preprocessResult.processedBuffer.length,
-      //     width: image.preprocessResult.width,
-      //     height: image.preprocessResult.height,
-      //   });
-
-      //   storedImages.push({
-      //     original: originalRecord,
-      //     preprocessed: processedRecord,
-      //   });
-      // }
-
-      const storedImages = await Promise.all(
-        files.map(async (file) => {
-          const upload = await StorageService.uploadFile(
+      const storedImagePairs = await Promise.all(
+        files.map(async (file, idx) => {
+          // 1. Store original uploaded image
+          console.log(`[STORAGE] Uploading original package image ${idx + 1}/${files.length}: ${file.filename}`);
+          const origUpload = await StorageService.uploadFile(
             file.buffer,
-            file.filename,
+            `orig_${idx + 1}_${file.filename}`,
             file.mimetype,
             "scans/original",
           );
 
-          return DBRepo.insertImage({
+          const origRecord = await DBRepo.insertImage({
             scanId: createdScan.id,
             imageType: "ORIGINAL",
-            storagePath: upload.storagePath,
+            storagePath: origUpload.storagePath,
             fileName: file.filename,
             contentType: file.mimetype,
             fileSizeBytes: file.buffer.length,
           });
+
+          // 2. Create and store preprocessed image derivative
+          console.log(`[PREPROCESS] Preprocessing image ${idx + 1}/${files.length}: ${file.filename}`);
+          const preprocessResult = await PreprocessService.preprocess(file.buffer);
+
+          const prepUpload = await StorageService.uploadFile(
+            preprocessResult.processedBuffer,
+            `prep_${idx + 1}_${file.filename}.jpg`,
+            "image/jpeg",
+            "scans/preprocessed",
+          );
+
+          const prepRecord = await DBRepo.insertImage({
+            scanId: createdScan.id,
+            imageType: "PREPROCESSED",
+            storagePath: prepUpload.storagePath,
+            fileName: `preprocessed_${file.filename}`,
+            contentType: "image/jpeg",
+            fileSizeBytes: preprocessResult.processedBuffer.length,
+            width: preprocessResult.width,
+            height: preprocessResult.height,
+          });
+
+          return [origRecord, prepRecord];
         }),
       );
+
+      const storedImages = storedImagePairs.flat();
+      console.log(`[STORAGE] Stored ${storedImages.length} total image records (${files.length} ORIGINAL + ${files.length} PREPROCESSED)`);
 
       return reply.status(201).send({
         success: true,
@@ -295,27 +285,29 @@ export const scanRoutes: FastifyPluginAsync = async (
         (img) => img.imageType === "PREPROCESSED",
       );
 
-      if (processedImages.length === 0) {
+      const targetImages =
+        processedImages.length > 0
+          ? processedImages
+          : scanImages.filter((img) => img.imageType === "ORIGINAL");
+
+      if (targetImages.length === 0) {
         return reply.status(400).send({
           success: false,
           error: {
             code: "NO_IMAGES",
-            message: "No preprocessed images found.",
+            message: "No package images found for this scan.",
           },
         });
       }
 
-      const ocrResults = [];
-
-      for (const image of processedImages) {
-        const imageBuffer = await StorageService.downloadFile(
-          image.storagePath,
-        );
-
-        const result = await OcrService.extract(imageBuffer);
-
-        ocrResults.push(result);
-      }
+      console.log(`[OCR] Running concurrent OCR on ${targetImages.length} package image(s) for scan ${scan.id}`);
+      const ocrResults = await Promise.all(
+        targetImages.map(async (image, idx) => {
+          console.log(`[OCR] Extracting text from image ${idx + 1}/${targetImages.length} (${image.imageType})`);
+          const imageBuffer = await StorageService.downloadFile(image.storagePath);
+          return OcrService.extract(imageBuffer);
+        }),
+      );
 
       const combinedText = ocrResults
         .map(

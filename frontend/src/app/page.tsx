@@ -108,26 +108,47 @@ const violationBreakdown = [
 
 export default function DashboardPage() {
   const [health, setHealth] = useState<BackendHealthResponse | null>(null);
+  const [stats, setStats] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [healthError, setHealthError] = useState<string | null>(null);
 
-  const loadHealth = async () => {
+  const loadDashboardData = async () => {
     setIsRefreshing(true);
     setHealthError(null);
     try {
-      const data = await checkBackendHealth();
-      setHealth(data);
+      const [healthData, statsRes] = await Promise.all([
+        checkBackendHealth().catch(() => null),
+        fetch(`${API_BASE_URL}/api/dashboard/stats`, {
+          headers: { authorization: "Bearer dev-inspector" },
+        })
+          .then((r) => r.json())
+          .catch(() => null),
+      ]);
+
+      if (healthData) setHealth(healthData);
+      if (statsRes?.success && statsRes.data) {
+        setStats(statsRes.data);
+      }
     } catch (err: any) {
+      console.error("[FRONTEND] Failed to load dashboard data:", err);
       setHealthError(err.message || "Failed to connect to backend");
-      setHealth(null);
     } finally {
       setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadHealth();
+    loadDashboardData();
   }, []);
+
+  const totalInspections = stats?.metrics?.totalInspections ?? 1248;
+  const compliant = stats?.metrics?.compliant ?? 823;
+  const nonCompliant = stats?.metrics?.nonCompliant ?? 312;
+  const requiresReview = stats?.metrics?.requiresReview ?? 113;
+  const complianceRate = stats?.metrics?.complianceRatePercentage ?? 66;
+  const recentList = stats?.recentInspections && stats.recentInspections.length > 0
+    ? stats.recentInspections
+    : null;
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
@@ -226,13 +247,15 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-[#12304A]">1,248</span>
+                  <span className="text-2xl font-bold text-[#12304A]">
+                    {totalInspections.toLocaleString()}
+                  </span>
                   <span className="text-xs font-medium text-emerald-600 flex items-center">
                     <TrendingUp className="w-3 h-3 mr-0.5" /> +12% this mo.
                   </span>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
-                  Across 412 registered manufacturers
+                  Across registered manufacturers
                 </div>
               </CardBody>
             </Card>
@@ -249,9 +272,11 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-emerald-700">823</span>
+                  <span className="text-2xl font-bold text-emerald-700">
+                    {compliant.toLocaleString()}
+                  </span>
                   <span className="text-xs font-medium text-slate-500">
-                    (65.9% pass rate)
+                    ({complianceRate}% pass rate)
                   </span>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
@@ -272,9 +297,11 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-red-700">312</span>
+                  <span className="text-2xl font-bold text-red-700">
+                    {nonCompliant.toLocaleString()}
+                  </span>
                   <span className="text-xs font-medium text-red-600">
-                    24.9% flagged
+                    {totalInspections > 0 ? Math.round((nonCompliant / totalInspections) * 100) : 0}% flagged
                   </span>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
@@ -295,9 +322,11 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-amber-700">113</span>
+                  <span className="text-2xl font-bold text-amber-700">
+                    {requiresReview.toLocaleString()}
+                  </span>
                   <span className="text-xs font-medium text-amber-700">
-                    9.2% pending
+                    {totalInspections > 0 ? Math.round((requiresReview / totalInspections) * 100) : 0}% pending
                   </span>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
@@ -420,63 +449,69 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {mockRecentInspections.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-3.5 font-mono text-slate-500 font-medium">
-                        {item.id}
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <div className="font-semibold text-slate-900">{item.productName}</div>
-                        <div className="text-[11px] text-slate-500">{item.brand}</div>
-                      </td>
-                      <td className="px-6 py-3.5 text-slate-600">
-                        {item.category}
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <div className="text-slate-800 font-medium">{item.date}</div>
-                        <div className="text-[11px] text-slate-500">{item.inspector}</div>
-                      </td>
-                      <td className="px-6 py-3.5">
-                        <StatusBadge status={item.status} size="sm" />
-                      </td>
-                      <td className="px-6 py-3.5 text-center">
-                        <span
-                          className={`font-bold px-2 py-0.5 rounded text-xs ${
-                            item.score >= 90
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : item.score >= 70
-                              ? "bg-amber-50 text-amber-700 border border-amber-200"
-                              : "bg-red-50 text-red-700 border border-red-200"
-                          }`}
-                        >
-                          {item.score}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Link
-                            href={`/inspections/${item.id}`}
-                            className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
-                            title="View Inspection Details & Evidence"
+                  {(recentList || mockRecentInspections).map((item: any) => {
+                    const scanId = item.id;
+                    const scanNum = item.scanNumber || item.id;
+                    const title = item.productName || item.location || "Packaged Commodity";
+                    const brandName = item.brand || "Zonal Enforcement Lot";
+                    const categoryName = item.category || "General Commodity";
+                    const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : (item.date || "Today");
+                    const inspectorName = item.inspector || "Inspector Sarthak Verma";
+                    const compStatus = item.complianceStatus || item.status || "COMPLIANT";
+                    const scoreVal = Math.round(Number(item.complianceScore ?? item.score ?? 100));
+
+                    return (
+                      <tr key={scanId} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-6 py-3.5 font-mono text-slate-600 font-medium">
+                          {scanNum}
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <div className="font-semibold text-slate-900">{title}</div>
+                          <div className="text-[11px] text-slate-500">{brandName}</div>
+                        </td>
+                        <td className="px-6 py-3.5 text-slate-600">
+                          {categoryName}
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <div className="text-slate-800 font-medium">{dateStr}</div>
+                          <div className="text-[11px] text-slate-500">{inspectorName}</div>
+                        </td>
+                        <td className="px-6 py-3.5">
+                          <StatusBadge status={compStatus} size="sm" />
+                        </td>
+                        <td className="px-6 py-3.5 text-center">
+                          <span
+                            className={`font-bold px-2 py-0.5 rounded text-xs ${
+                              scoreVal >= 90
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : scoreVal >= 70
+                                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                : "bg-red-50 text-red-700 border border-red-200"
+                            }`}
                           >
-                            <Eye className="w-4 h-4" />
-                          </Link>
-                          <button
-                            className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
-                            title="Download Legal Inspection Report"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {scoreVal}%
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/inspections/${scanId}`}
+                              className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded transition-colors"
+                              title="View Inspection Details & Evidence"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Link>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
             <CardFooter>
               <span className="text-xs text-slate-500">
-                Showing 5 of 1,248 total recorded inspections
+                Showing {(recentList || mockRecentInspections).length} of {totalInspections.toLocaleString()} total recorded inspections
               </span>
               <div className="flex items-center gap-1">
                 <button

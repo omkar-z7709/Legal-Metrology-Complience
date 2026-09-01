@@ -64,32 +64,36 @@ export default function NewInspectionPage() {
       setError(null);
     }
 
-    if (validFiles.length === 0) return;
+    if (validFiles.length === 0) {
+      e.target.value = "";
+      return;
+    }
 
-    // ADD to existing selection instead of replacing it
-    setSelectedFiles((previous) => {
-      const existingKeys = new Set(
-        previous.map(
-          (file) => `${file.name}-${file.size}-${file.lastModified}`,
-        ),
-      );
+    const existingKeys = new Set(
+      selectedFiles.map(
+        (file) => `${file.name}-${file.size}-${file.lastModified}`,
+      ),
+    );
 
-      const newFiles = validFiles.filter(
-        (file) =>
-          !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`),
-      );
+    const newFiles = validFiles.filter(
+      (file) =>
+        !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`),
+    );
 
-      return [...previous, ...newFiles];
-    });
+    if (newFiles.length === 0) {
+      e.target.value = "";
+      return;
+    }
 
+    setSelectedFiles((previous) => [...previous, ...newFiles]);
     setPreviewUrls((previous) => [
       ...previous,
-      ...validFiles.map((file) => URL.createObjectURL(file)),
+      ...newFiles.map((file) => URL.createObjectURL(file)),
     ]);
 
-    if (!productName) {
+    if (!productName && newFiles[0]) {
       setProductName(
-        validFiles[0].name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
+        newFiles[0].name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
       );
     }
 
@@ -109,11 +113,9 @@ export default function NewInspectionPage() {
 
     setPreviewUrls((previous) => {
       const urlToRemove = previous[index];
-
       if (urlToRemove) {
         URL.revokeObjectURL(urlToRemove);
       }
-
       return previous.filter((_, i) => i !== index);
     });
   };
@@ -133,20 +135,11 @@ export default function NewInspectionPage() {
     setCurrentStepIndex(0);
 
     try {
-      // Step 1 & 2: Upload
+      // Step 1: Prepare FormData with all package images
       const formData = new FormData();
       selectedFiles.forEach((file) => {
         formData.append("files", file);
       });
-
-      console.log(
-        "[UPLOAD] FormData files:",
-        Array.from(formData.getAll("files")).map((file: any) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        })),
-      );
 
       formData.append("productName", productName || "Sample Commodity");
       formData.append("category", category);
@@ -154,14 +147,12 @@ export default function NewInspectionPage() {
       formData.append("location", location);
 
       console.log(
-        "[UPLOAD] Selected files:",
-        selectedFiles.map((file) => ({
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        })),
+        `[FRONTEND] Uploading ${selectedFiles.length} image(s) for inspection:`,
+        selectedFiles.map((f) => f.name),
       );
 
+      // Step 2: Upload and initialize scan
+      setCurrentStepIndex(0);
       const uploadRes = await fetch(`${API_BASE_URL}/api/scans/upload`, {
         method: "POST",
         headers: {
@@ -177,12 +168,12 @@ export default function NewInspectionPage() {
       const uploadData = await uploadRes.json();
       const scanId = uploadData.data.scanId;
 
-      // Advance progress steps visually
+      // Advance visual pipeline progress
+      setCurrentStepIndex(1);
+      await new Promise((r) => setTimeout(r, 400));
       setCurrentStepIndex(2);
-      await new Promise((r) => setTimeout(r, 600));
 
-      setCurrentStepIndex(2);
-
+      // Step 3: Trigger backend analysis pipeline (OCR -> Gemini -> Rules -> DB)
       const analyzeRes = await fetch(
         `${API_BASE_URL}/api/inspections/${scanId}/analyze`,
         {
@@ -195,18 +186,16 @@ export default function NewInspectionPage() {
 
       const analyzeJson = await analyzeRes.json();
 
-      console.log("========== ANALYSIS RESULT ==========");
-      console.log(analyzeJson.data);
-      console.log("======================================");
-
       if (!analyzeRes.ok || !analyzeJson.success) {
-        throw new Error(analyzeJson?.error?.message || "Analysis failed");
+        throw new Error(analyzeJson?.error?.message || "Analysis pipeline failed");
       }
 
       setCurrentStepIndex(6);
+      await new Promise((r) => setTimeout(r, 300));
 
       router.push(`/inspections/${scanId}`);
     } catch (err: any) {
+      console.error("[FRONTEND] Inspection submission error:", err);
       setError(err.message || "Failed to process inspection");
       setIsProcessing(false);
       setCurrentStepIndex(-1);
@@ -306,87 +295,85 @@ export default function NewInspectionPage() {
                 <Card>
                   <CardHeader
                     title="1. Packaging Image Upload"
-                    description="Clear frontal photo of Principal Display Panel (PDP)"
+                    description="Clear photos of Principal Display Panel (PDP) and sides"
                   />
                   <CardBody className="space-y-4">
-                    <label className="border-2 border-dashed border-slate-300 hover:border-slate-400 rounded-xl p-8 text-center transition-colors bg-slate-50/50 flex flex-col items-center justify-center cursor-pointer min-h-[260px] relative overflow-hidden">
-                      <input
-                        id="package-images"
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        multiple
-                        onChange={handleFileChange}
-                        className="hidden"
-                      />
+                    <input
+                      id="package-images"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/jpg"
+                      multiple
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
 
-                      {previewUrls.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+                    {previewUrls.length > 0 ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {previewUrls.map((url, index) => (
                             <div
                               key={`${url}-${index}`}
-                              className="relative border border-slate-200 rounded-lg overflow-hidden bg-slate-50"
+                              className="relative border border-slate-200 rounded-lg overflow-hidden bg-slate-100 shadow-2xs group"
                             >
                               <img
                                 src={url}
-                                alt={`Package image ${index + 1}`}
-                                className="w-full h-40 object-contain"
+                                alt={`Package view ${index + 1}`}
+                                className="w-full h-36 object-contain bg-white"
                               />
 
                               <button
                                 type="button"
                                 onClick={() => handleRemoveFile(index)}
-                                className="absolute top-2 right-2 bg-white/90 rounded-full px-2 py-1 text-xs text-red-600"
+                                className="absolute top-1.5 right-1.5 bg-red-600 text-white rounded-full px-2 py-0.5 text-[10px] font-semibold hover:bg-red-700 shadow-xs transition-colors"
                               >
                                 Remove
                               </button>
 
-                              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1">
+                              <div className="bg-slate-800/80 text-white text-[10px] px-2 py-0.5 text-center font-mono">
                                 Image {index + 1}
                               </div>
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <>
-                          <div className="w-12 h-12 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center mb-3">
-                            <Upload className="w-6 h-6" />
-                          </div>
-                          <h4 className="text-sm font-semibold text-slate-800">
-                            Upload Product Image
-                          </h4>
-                          <p className="text-xs text-slate-500 mt-1 max-w-xs">
-                            Drag and drop package photo or browse local files.
-                          </p>
-                          <span className="mt-3 px-3 py-1 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-700 shadow-2xs">
-                            Browse Files
-                          </span>
-                        </>
-                      )}
 
-                      {previewUrls.length > 0 && (
-                        <div className="mt-4">
+                        <div className="flex items-center justify-between pt-2">
                           <label
                             htmlFor="package-images"
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
                           >
-                            <Upload className="w-4 h-4" />
+                            <Upload className="w-3.5 h-3.5 text-blue-600" />
                             Add More Images
                           </label>
-                        </div>
-                      )}
 
-                      {selectedFiles.length > 0 && (
-                        <p className="text-sm text-slate-600 mt-2">
-                          {selectedFiles.length} package image
-                          {selectedFiles.length !== 1 ? "s" : ""} selected
+                          <span className="text-xs text-slate-500 font-medium">
+                            {selectedFiles.length} package image
+                            {selectedFiles.length !== 1 ? "s" : ""} selected
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <label
+                        htmlFor="package-images"
+                        className="border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl p-8 text-center transition-colors bg-slate-50/50 flex flex-col items-center justify-center cursor-pointer min-h-[240px]"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center mb-3">
+                          <Upload className="w-6 h-6" />
+                        </div>
+                        <h4 className="text-sm font-semibold text-slate-800">
+                          Upload Package Image(s)
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1 max-w-xs">
+                          Drag and drop package photo(s) or browse local files. Select multiple angles (Front, Back, Sides).
                         </p>
-                      )}
-                    </label>
+                        <span className="mt-3 px-3 py-1 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-700 shadow-2xs">
+                          Browse Files
+                        </span>
+                      </label>
+                    )}
 
                     <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                      ✓ Supported: JPG, PNG, WebP (max 20MB)
-                      <br />✓ Automatically preprocessed for glare and contrast
-                      enhancement.
+                      ✓ Supported: JPG, PNG, WebP (max 20MB per file)
+                      <br />✓ Automatically preprocessed for glare reduction and contrast enhancement.
                     </div>
                   </CardBody>
                 </Card>

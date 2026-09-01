@@ -9,7 +9,7 @@ import { Settings, Sliders, ShieldCheck, Database, Cpu, Save } from "lucide-reac
 
 export default function SettingsPage() {
   const [ocrEngine, setOcrEngine] = useState("google-vision");
-  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
+  const [geminiModel, setGeminiModel] = useState("gemini-3.7-flash");
   const [confidenceThreshold, setConfidenceThreshold] = useState("0.85");
   const [saved, setSaved] = useState(false);
 
@@ -64,8 +64,10 @@ export default function SettingsPage() {
                     onChange={(e) => setGeminiModel(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
                   >
-                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Official @google/genai SDK) [Recommended]</option>
-                    <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Multimodal Inspection)</option>
+                    <option value="gemini-3.7-flash">Gemini 3.7 Flash (Fast Hybrid Reasoning & Extraction) [Recommended]</option>
+                    <option value="gemini-3.7-pro">Gemini 3.7 Pro (Advanced Multimodal & Complex Legal Analysis)</option>
+                    <option value="gemini-3.6-flash">Gemini 3.6 Flash (High-Throughput Vision & Text)</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash (Legacy Fast Inference)</option>
                   </select>
                 </div>
 
