@@ -8,7 +8,7 @@ import { Card, CardHeader, CardBody, CardFooter } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/Badge";
 import { ScanSearch, Filter, Eye, FileText, Search, Plus } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, authFetch } from "@/lib/api";
 
 export default function InspectionsListPage() {
   const [scans, setScans] = useState<any[]>([]);
@@ -16,9 +16,7 @@ export default function InspectionsListPage() {
   const [filterStatus, setFilterStatus] = useState("ALL");
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/scans`, {
-      headers: { authorization: "Bearer dev-inspector" },
-    })
+    authFetch(`${API_BASE_URL}/api/scans`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data.scans) {

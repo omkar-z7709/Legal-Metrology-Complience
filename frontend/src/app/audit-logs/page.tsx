@@ -6,16 +6,14 @@ import { TopBar } from "@/components/layout/TopBar";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { History, Shield, Filter, Search } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, authFetch } from "@/lib/api";
 
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/audit-logs`, {
-      headers: { authorization: "Bearer dev-inspector" },
-    })
+    authFetch(`${API_BASE_URL}/api/audit-logs`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data.logs) {

@@ -19,7 +19,7 @@ import {
   ArrowRight,
   RefreshCw,
 } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, authFetch } from "@/lib/api";
 
 const PIPELINE_STEPS = [
   "Image uploaded and validated",
@@ -162,11 +162,8 @@ export default function NewInspectionPage() {
         })),
       );
 
-      const uploadRes = await fetch(`${API_BASE_URL}/api/scans/upload`, {
+      const uploadRes = await authFetch(`${API_BASE_URL}/api/scans/upload`, {
         method: "POST",
-        headers: {
-          authorization: "Bearer dev-inspector",
-        },
         body: formData,
       });
 
@@ -183,13 +180,10 @@ export default function NewInspectionPage() {
 
       setCurrentStepIndex(2);
 
-      const analyzeRes = await fetch(
+      const analyzeRes = await authFetch(
         `${API_BASE_URL}/api/inspections/${scanId}/analyze`,
         {
           method: "POST",
-          headers: {
-            authorization: "Bearer dev-inspector",
-          },
         },
       );
 

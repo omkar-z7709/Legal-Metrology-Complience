@@ -1,8 +1,10 @@
 import { buildApp } from "../app.js";
+import { supabaseClient } from "../db/supabase.js";
+import { DBRepo } from "../db/repo.js";
 
 async function runAuthTests() {
   console.log("==================================================");
-  console.log("🧪 MODULE 2: Supabase Auth & Role-Based Permissions");
+  console.log("🧪 MODULE 2: Authorized Officer Authentication & RBAC Tests");
   console.log("==================================================");
 
   const app = buildApp();
@@ -19,84 +21,243 @@ async function runAuthTests() {
   }
   console.log("   ✓ Unauthenticated request blocked correctly (401 Unauthorized)");
 
-  // Test 2: Inspector Login
-  console.log("\n2️⃣ Testing Inspector Login...");
-  const resLogin = await app.inject({
+  // Test 2: Malformed login request payload (Missing password)
+  console.log("\n2️⃣ Testing Validation Error (Missing fields)...");
+  const resValidation = await app.inject({
     method: "POST",
     url: "/api/auth/login",
-    payload: { role: "INSPECTOR" },
+    payload: { email: "test.inspector@lm.gov.in" },
   });
-  console.log(`   [POST /api/auth/login] Status: ${resLogin.statusCode}`);
-  const loginData = resLogin.json();
-  const token = loginData.data.token;
-  console.log(`   ✓ Received Token for: ${loginData.data.user.name} (${loginData.data.user.role})`);
+  console.log(`   [POST /api/auth/login (missing password)] Status: ${resValidation.statusCode}`);
+  if (resValidation.statusCode !== 400) {
+    throw new Error(`Expected 400, got ${resValidation.statusCode}`);
+  }
+  console.log("   ✓ Validation error handled correctly (400 Bad Request)");
 
-  // Test 3: Inspector accessing Inspector Route
-  console.log("\n3️⃣ Testing Inspector accessing Inspector Route...");
-  const resInspectorScans = await app.inject({
+  // Test 3: Invalid Supabase Credentials (401)
+  console.log("\n3️⃣ Testing Invalid Credentials (Wrong Password)...");
+  // Mock Supabase signInWithPassword for this test
+  const originalSignIn = supabaseClient.auth.signInWithPassword;
+  supabaseClient.auth.signInWithPassword = (async (credentials: any) => {
+    if (credentials.password === "wrongpassword") {
+      return { data: { user: null, session: null }, error: { message: "Invalid login credentials" } } as any;
+    }
+    return originalSignIn.call(supabaseClient.auth, credentials);
+  }) as any;
+
+  const resInvalid = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "test.inspector@lm.gov.in", password: "wrongpassword" },
+  });
+  console.log(`   [POST /api/auth/login (wrong password)] Status: ${resInvalid.statusCode}`);
+  if (resInvalid.statusCode !== 401) {
+    throw new Error(`Expected 401, got ${resInvalid.statusCode}`);
+  }
+  console.log("   ✓ Invalid credentials rejected (401 Unauthorized)");
+
+  // Test 4: Authenticated user not in authorized_officers table (403)
+  console.log("\n4️⃣ Testing Unauthorized User (Valid Supabase Auth, but NOT in authorized_officers)...");
+  const originalGetUser = supabaseClient.auth.getUser;
+
+  supabaseClient.auth.signInWithPassword = async () => {
+    return {
+      data: {
+        session: { access_token: "jwt-unauthorized-user" },
+        user: { id: "u-unauth-999", email: "civilian.citizen@gmail.com" },
+      },
+      error: null,
+    } as any;
+  };
+
+  supabaseClient.auth.getUser = async (token: string) => {
+    if (token === "jwt-unauthorized-user") {
+      return {
+        data: { user: { id: "u-unauth-999", email: "civilian.citizen@gmail.com" } },
+        error: null,
+      } as any;
+    }
+    return originalGetUser.call(supabaseClient.auth, token);
+  };
+
+  const resUnauthorizedLogin = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "civilian.citizen@gmail.com", password: "somepassword123" },
+  });
+  console.log(`   [POST /api/auth/login (not in whitelist)] Status: ${resUnauthorizedLogin.statusCode}`);
+  if (resUnauthorizedLogin.statusCode !== 403) {
+    throw new Error(`Expected 403, got ${resUnauthorizedLogin.statusCode}`);
+  }
+  console.log("   ✓ Unauthorized user denied (403 Forbidden)");
+
+  // Test 5: Inactive / Suspended Officer (403)
+  console.log("\n5️⃣ Testing Inactive / Suspended Officer Login (is_active = false)...");
+  supabaseClient.auth.signInWithPassword = async () => {
+    return {
+      data: {
+        session: { access_token: "jwt-inactive-officer" },
+        user: { id: "a4444444-4444-4444-4444-444444444444", email: "inactive.officer@lm.gov.in" },
+      },
+      error: null,
+    } as any;
+  };
+
+  supabaseClient.auth.getUser = async (token: string) => {
+    if (token === "jwt-inactive-officer") {
+      return {
+        data: { user: { id: "a4444444-4444-4444-4444-444444444444", email: "inactive.officer@lm.gov.in" } },
+        error: null,
+      } as any;
+    }
+    return originalGetUser.call(supabaseClient.auth, token);
+  };
+
+  const resInactiveLogin = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "inactive.officer@lm.gov.in", password: "validpassword123" },
+  });
+  console.log(`   [POST /api/auth/login (inactive officer)] Status: ${resInactiveLogin.statusCode}`);
+  if (resInactiveLogin.statusCode !== 403) {
+    throw new Error(`Expected 403, got ${resInactiveLogin.statusCode}`);
+  }
+  console.log("   ✓ Inactive officer denied access (403 Forbidden)");
+
+  // Test 6: Valid Inspector Login & Access Checks
+  console.log("\n6️⃣ Testing Valid Inspector Login & Access Controls...");
+  supabaseClient.auth.signInWithPassword = async () => {
+    return {
+      data: {
+        session: { access_token: "jwt-inspector-valid" },
+        user: { id: "a1111111-1111-1111-1111-111111111111", email: "test.inspector@lm.gov.in" },
+      },
+      error: null,
+    } as any;
+  };
+
+  supabaseClient.auth.getUser = async (token: string) => {
+    if (token === "jwt-inspector-valid") {
+      return {
+        data: { user: { id: "a1111111-1111-1111-1111-111111111111", email: "test.inspector@lm.gov.in" } },
+        error: null,
+      } as any;
+    }
+    if (token === "jwt-supervisor-valid") {
+      return {
+        data: { user: { id: "a2222222-2222-2222-2222-222222222222", email: "test.supervisor@lm.gov.in" } },
+        error: null,
+      } as any;
+    }
+    if (token === "jwt-admin-valid") {
+      return {
+        data: { user: { id: "a3333333-3333-3333-3333-333333333333", email: "test.admin@lm.gov.in" } },
+        error: null,
+      } as any;
+    }
+    return originalGetUser.call(supabaseClient.auth, token);
+  };
+
+  const resInspectorLogin = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "test.inspector@lm.gov.in", password: "validpassword123" },
+  });
+  console.log(`   [POST /api/auth/login (inspector)] Status: ${resInspectorLogin.statusCode}`);
+  const inspectorToken = resInspectorLogin.json().data.token;
+  const inspectorData = resInspectorLogin.json().data.user;
+  console.log(`   ✓ Authenticated: ${inspectorData.name} (Role: ${inspectorData.role})`);
+
+  // Inspector accessing Inspector Scans
+  const resInspectorAllowed = await app.inject({
     method: "GET",
     url: "/api/inspector/scans",
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${inspectorToken}` },
   });
-  console.log(`   [GET /api/inspector/scans] Status: ${resInspectorScans.statusCode}`);
-  if (resInspectorScans.statusCode !== 200) {
-    throw new Error(`Expected 200, got ${resInspectorScans.statusCode}`);
+  console.log(`   [GET /api/inspector/scans (as INSPECTOR)] Status: ${resInspectorAllowed.statusCode}`);
+  if (resInspectorAllowed.statusCode !== 200) {
+    throw new Error(`Expected 200, got ${resInspectorAllowed.statusCode}`);
   }
-  console.log("   ✓ Inspector allowed on Inspector route (200 OK)");
+  console.log("   ✓ Inspector permitted on Inspector route (200 OK)");
 
-  // Test 4: Inspector attempting to access Admin Route (Must be blocked with 403)
-  console.log("\n4️⃣ Testing Inspector attempting to access Admin Route (Privilege Escalation Prevention)...");
-  const resForbidden = await app.inject({
+  // Inspector attempting to access Admin endpoint (Must be 403)
+  const resInspectorBlockedAdmin = await app.inject({
     method: "GET",
     url: "/api/admin/users",
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${inspectorToken}` },
   });
-  console.log(`   [GET /api/admin/users (as INSPECTOR)] Status: ${resForbidden.statusCode}`);
-  if (resForbidden.statusCode !== 403) {
-    throw new Error(`Expected 403 Forbidden, got ${resForbidden.statusCode}`);
+  console.log(`   [GET /api/admin/users (as INSPECTOR)] Status: ${resInspectorBlockedAdmin.statusCode}`);
+  if (resInspectorBlockedAdmin.statusCode !== 403) {
+    throw new Error(`Expected 403 Forbidden, got ${resInspectorBlockedAdmin.statusCode}`);
   }
-  console.log("   ✓ Inspector correctly forbidden from Admin route (403 Forbidden)");
+  console.log("   ✓ Inspector forbidden from Admin route (403 Forbidden)");
 
-  // Test 5: Admin Login and Admin Route Access
-  console.log("\n5️⃣ Testing Admin Login and Access...");
-  const resAdminLogin = await app.inject({
-    method: "POST",
-    url: "/api/auth/login",
-    payload: { role: "ADMIN" },
-  });
-  const adminToken = resAdminLogin.json().data.token;
-  const resAdminAccess = await app.inject({
-    method: "GET",
-    url: "/api/admin/users",
-    headers: { authorization: `Bearer ${adminToken}` },
-  });
-  console.log(`   [GET /api/admin/users (as ADMIN)] Status: ${resAdminAccess.statusCode}`);
-  if (resAdminAccess.statusCode !== 200) {
-    throw new Error(`Expected 200, got ${resAdminAccess.statusCode}`);
-  }
-  console.log("   ✓ Admin allowed on Admin route (200 OK)");
+  // Test 7: Valid Supervisor Login & Access
+  console.log("\n7️⃣ Testing Valid Supervisor Access...");
+  supabaseClient.auth.signInWithPassword = async () => {
+    return {
+      data: {
+        session: { access_token: "jwt-supervisor-valid" },
+        user: { id: "a2222222-2222-2222-2222-222222222222", email: "test.supervisor@lm.gov.in" },
+      },
+      error: null,
+    } as any;
+  };
 
-  // Test 6: Supervisor Login and Review Route Access
-  console.log("\n6️⃣ Testing Supervisor Access...");
   const resSupLogin = await app.inject({
     method: "POST",
     url: "/api/auth/login",
-    payload: { role: "SUPERVISOR" },
+    payload: { email: "test.supervisor@lm.gov.in", password: "validpassword123" },
   });
   const supToken = resSupLogin.json().data.token;
-  const resSupAccess = await app.inject({
+
+  const resSupReviews = await app.inject({
     method: "GET",
     url: "/api/supervisor/reviews",
     headers: { authorization: `Bearer ${supToken}` },
   });
-  console.log(`   [GET /api/supervisor/reviews (as SUPERVISOR)] Status: ${resSupAccess.statusCode}`);
-  if (resSupAccess.statusCode !== 200) {
-    throw new Error(`Expected 200, got ${resSupAccess.statusCode}`);
+  console.log(`   [GET /api/supervisor/reviews (as SUPERVISOR)] Status: ${resSupReviews.statusCode}`);
+  if (resSupReviews.statusCode !== 200) {
+    throw new Error(`Expected 200, got ${resSupReviews.statusCode}`);
   }
-  console.log("   ✓ Supervisor allowed on Review route (200 OK)");
+  console.log("   ✓ Supervisor permitted on Reviews route (200 OK)");
+
+  // Test 8: Valid Admin Login & Access
+  console.log("\n8️⃣ Testing Valid Admin Access...");
+  supabaseClient.auth.signInWithPassword = async () => {
+    return {
+      data: {
+        session: { access_token: "jwt-admin-valid" },
+        user: { id: "a3333333-3333-3333-3333-333333333333", email: "test.admin@lm.gov.in" },
+      },
+      error: null,
+    } as any;
+  };
+
+  const resAdminLogin = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "test.admin@lm.gov.in", password: "validpassword123" },
+  });
+  const adminToken = resAdminLogin.json().data.token;
+
+  const resAdminUsers = await app.inject({
+    method: "GET",
+    url: "/api/admin/users",
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+  console.log(`   [GET /api/admin/users (as ADMIN)] Status: ${resAdminUsers.statusCode}`);
+  if (resAdminUsers.statusCode !== 200) {
+    throw new Error(`Expected 200, got ${resAdminUsers.statusCode}`);
+  }
+  console.log("   ✓ Admin permitted on Admin route (200 OK)");
+
+  // Restore mocks
+  supabaseClient.auth.signInWithPassword = originalSignIn;
+  supabaseClient.auth.getUser = originalGetUser;
 
   console.log("\n==================================================");
-  console.log("✅ MODULE 2: All Authentication & Role Tests Passed!");
+  console.log("✅ ALL AUTHENTICATION & RBAC TESTS PASSED SUCCESSFULLY!");
   console.log("==================================================");
 }
 

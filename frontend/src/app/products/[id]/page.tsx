@@ -20,7 +20,7 @@ import {
   TrendingUp,
   ArrowLeft,
 } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, authFetch } from "@/lib/api";
 
 export default function ProductHistoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -28,9 +28,7 @@ export default function ProductHistoryPage({ params }: { params: Promise<{ id: s
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/products/${id}/history`, {
-      headers: { authorization: "Bearer dev-inspector" },
-    })
+    authFetch(`${API_BASE_URL}/api/products/${id}/history`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data) {

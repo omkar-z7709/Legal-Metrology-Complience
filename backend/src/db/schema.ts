@@ -45,6 +45,18 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// 1b. Authorized Officers Table (Government Officer Whitelist & RBAC)
+export const authorizedOfficers = pgTable("authorized_officers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  role: varchar("role", { length: 50 }).notNull().default("INSPECTOR"), // 'INSPECTOR' | 'SUPERVISOR' | 'ADMIN'
+  department: varchar("department", { length: 255 }).default("Legal Metrology Enforcement").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // 2. Products Table
 export const products = pgTable("products", {
   id: uuid("id").primaryKey().defaultRandom(),
