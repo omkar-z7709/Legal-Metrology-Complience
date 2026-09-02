@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from "fastify";
-import { supabaseClient } from "../db/supabase.js";
+import { supabaseClient, supabaseAdmin } from "../db/supabase.js";
+import { DBRepo } from "../db/repo.js";
 
 export type UserRole = "INSPECTOR" | "SUPERVISOR" | "ADMIN";
 
@@ -17,33 +18,12 @@ declare module "fastify" {
   }
 }
 
-// Development and demo fallback credentials
-const DEV_USERS: Record<string, AuthUser> = {
-  "inspector.sarthak@lm.gov.in": {
-    id: "u1111111-1111-1111-1111-111111111111",
-    email: "inspector.sarthak@lm.gov.in",
-    role: "INSPECTOR",
-    name: "Sarthak Verma",
-    department: "Legal Metrology Enforcement Directorate",
-  },
-  "supervisor.anita@lm.gov.in": {
-    id: "u2222222-2222-2222-2222-222222222222",
-    email: "supervisor.anita@lm.gov.in",
-    role: "SUPERVISOR",
-    name: "Anita Rao",
-    department: "Legal Metrology Zonal Office",
-  },
-  "admin.director@lm.gov.in": {
-    id: "u3333333-3333-3333-3333-333333333333",
-    email: "admin.director@lm.gov.in",
-    role: "ADMIN",
-    name: "Director General",
-    department: "Ministry of Consumer Affairs",
-  },
-};
-
 /**
- * Authentication Middleware: Extracts & validates JWT or test bearer token
+ * Authentication Middleware:
+ * 1. Extracts & validates Supabase JWT Bearer token.
+ * 2. Whitelist Verification: Ensures authenticated user is in `authorized_officers`.
+ * 3. Enforces that the officer's status is active (is_active = true).
+ * 4. Populates request.user with trusted database attributes (preventing role tampering).
  */
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   const authHeader = request.headers.authorization;
@@ -58,26 +38,25 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     });
   }
 
-  const token = authHeader.split(" ")[1];
-
-  // 1. Check for dev/demo prototype tokens: dev-inspector, dev-supervisor, dev-admin
-  if (token.startsWith("dev-")) {
-    const roleKey = token.replace("dev-", "").toLowerCase();
-    const matchedUser = Object.values(DEV_USERS).find(
-      (u) => u.role.toLowerCase() === roleKey
-    );
-
-    if (matchedUser) {
-      request.user = matchedUser;
-      return;
-    }
+  const token = authHeader.split(" ")[1]?.trim();
+  if (!token) {
+    return reply.status(401).send({
+      success: false,
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Authentication token is missing.",
+      },
+    });
   }
 
-  // 2. Verify with Supabase Auth
-  try {
-    const { data: { user }, error } = await supabaseClient.auth.getUser(token);
+  // 1. Verify token validity with Supabase Auth
+  let authUserEmail: string | undefined;
+  let authUserId: string | undefined;
 
-    if (error || !user) {
+  try {
+    const { data, error } = await supabaseClient.auth.getUser(token);
+
+    if (error || !data?.user) {
       return reply.status(401).send({
         success: false,
         error: {
@@ -87,16 +66,8 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       });
     }
 
-    // Role is stored in user_metadata or default to INSPECTOR
-    const role: UserRole = (user.user_metadata?.role as UserRole) || "INSPECTOR";
-
-    request.user = {
-      id: user.id,
-      email: user.email || "",
-      role,
-      name: user.user_metadata?.name || user.email || "Official",
-      department: user.user_metadata?.department || "Legal Metrology Department",
-    };
+    authUserEmail = data.user.email?.trim().toLowerCase();
+    authUserId = data.user.id;
   } catch (err: any) {
     return reply.status(401).send({
       success: false,
@@ -106,6 +77,53 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       },
     });
   }
+
+  if (!authUserEmail) {
+    return reply.status(401).send({
+      success: false,
+      error: {
+        code: "INVALID_TOKEN",
+        message: "Token does not contain an associated user email.",
+      },
+    });
+  }
+
+  // 2. Query authorized_officers table to verify government officer whitelist
+  const officer = await DBRepo.getAuthorizedOfficerByEmail(authUserEmail);
+
+  // 3. Officer must exist in authorized_officers whitelist
+  if (!officer) {
+    return reply.status(403).send({
+      success: false,
+      error: {
+        code: "OFFICER_NOT_AUTHORIZED",
+        message: "Access denied. User is not registered as an authorized government officer.",
+      },
+    });
+  }
+
+  // 4. Officer must be active
+  const isActive = officer.is_active !== undefined ? officer.is_active : officer.isActive;
+  if (!isActive) {
+    return reply.status(403).send({
+      success: false,
+      error: {
+        code: "OFFICER_ACCOUNT_INACTIVE",
+        message: "Access denied. Officer account is suspended or inactive.",
+      },
+    });
+  }
+
+  // 5. Populate request.user strictly with trusted database attributes
+  const role: UserRole = (officer.role as UserRole) || "INSPECTOR";
+
+  request.user = {
+    id: officer.id || authUserId,
+    email: officer.email,
+    role,
+    name: officer.name || authUserEmail,
+    department: officer.department || "Legal Metrology Enforcement",
+  };
 }
 
 /**

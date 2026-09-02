@@ -1,16 +1,19 @@
 import { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { supabaseClient } from "../db/supabase.js";
+import { supabaseClient, supabaseAdmin } from "../db/supabase.js";
 import { authenticate, requireRole, UserRole } from "../middleware/auth.js";
+import { DBRepo } from "../db/repo.js";
 
 const loginSchema = z.object({
-  email: z.string().email().optional(),
-  password: z.string().min(6).optional(),
-  role: z.enum(["INSPECTOR", "SUPERVISOR", "ADMIN"]).optional(),
+  email: z.string().email("A valid official email is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
-  // 1. Login Endpoint
+  /**
+   * 1. Official Officer Login Endpoint
+   * Authenticates against Supabase Auth, then verifies officer authorization and active status.
+   */
   fastify.post("/auth/login", async (request, reply) => {
     const parseResult = loginSchema.safeParse(request.body);
     if (!parseResult.success) {
@@ -18,74 +21,89 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
         success: false,
         error: {
           code: "VALIDATION_ERROR",
-          message: "Invalid login payload",
+          message: "Invalid login payload. Please provide both email and password.",
           details: parseResult.error.format(),
         },
       });
     }
 
-    const { email, password, role } = parseResult.data;
+    const { email, password } = parseResult.data;
+    const normalizedEmail = email.trim().toLowerCase();
 
-    // Fast Prototype / Demo Login by Role
-    if (role || (email && !password)) {
-      const selectedRole: UserRole = role || (email?.includes("admin") ? "ADMIN" : email?.includes("supervisor") ? "SUPERVISOR" : "INSPECTOR");
-      const token = `dev-${selectedRole.toLowerCase()}`;
-      
-      return reply.status(200).send({
-        success: true,
-        data: {
-          token,
-          user: {
-            email: email || `${selectedRole.toLowerCase()}@lm.gov.in`,
-            role: selectedRole,
-            name: selectedRole === "INSPECTOR" ? "Sarthak Verma" : selectedRole === "SUPERVISOR" ? "Anita Rao" : "Director General",
-            department: "Legal Metrology Enforcement",
-          },
-        },
-      });
-    }
-
-    // Live Supabase Auth Login
-    if (email && password) {
+    // 1. Authenticate with Supabase Auth
+    let authData: any = null;
+    try {
       const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
 
-      if (error || !data.session) {
+      if (error || !data?.session) {
         return reply.status(401).send({
           success: false,
           error: {
-            code: "AUTH_FAILED",
-            message: error?.message || "Invalid email or password",
+            code: "INVALID_CREDENTIALS",
+            message: "Invalid official email or password.",
           },
         });
       }
 
-      return reply.status(200).send({
-        success: true,
-        data: {
-          token: data.session.access_token,
-          user: {
-            id: data.user.id,
-            email: data.user.email,
-            role: data.user.user_metadata?.role || "INSPECTOR",
-            name: data.user.user_metadata?.name || data.user.email,
-          },
+      authData = data;
+    } catch (err: any) {
+      return reply.status(401).send({
+        success: false,
+        error: {
+          code: "AUTH_FAILED",
+          message: err.message || "Authentication service error.",
         },
       });
     }
 
-    return reply.status(400).send({
-      success: false,
-      error: {
-        code: "BAD_REQUEST",
-        message: "Provide either role or email+password",
+    // 2. Query authorized_officers table to ensure official is approved
+    const officer = await DBRepo.getAuthorizedOfficerByEmail(normalizedEmail);
+
+    // 3. Reject if not found in authorized officers whitelist
+    if (!officer) {
+      return reply.status(403).send({
+        success: false,
+        error: {
+          code: "OFFICER_NOT_AUTHORIZED",
+          message: "Access Denied: This account is not registered as an authorized government officer.",
+        },
+      });
+    }
+
+    // 4. Reject if officer is inactive / suspended
+    const isActive = officer.is_active !== undefined ? officer.is_active : officer.isActive;
+    if (!isActive) {
+      return reply.status(403).send({
+        success: false,
+        error: {
+          code: "OFFICER_ACCOUNT_INACTIVE",
+          message: "Access Denied: Your official officer account is currently inactive or suspended.",
+        },
+      });
+    }
+
+    // 5. Return trusted officer data and Supabase access token
+    return reply.status(200).send({
+      success: true,
+      data: {
+        token: authData.session.access_token,
+        user: {
+          id: officer.id || authData.user.id,
+          email: officer.email,
+          role: officer.role as UserRole,
+          name: officer.name,
+          department: officer.department || "Legal Metrology Enforcement",
+        },
       },
     });
   });
 
-  // 2. Profile Me Endpoint (Authenticated)
+  /**
+   * 2. Profile Me Endpoint (Authenticated)
+   */
   fastify.get("/auth/me", { preHandler: [authenticate] }, async (request, reply) => {
     return reply.status(200).send({
       success: true,
@@ -95,7 +113,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
     });
   });
 
-  // 3. Role Protected Test Endpoints
+  /**
+   * 3. Role Protected Verification Endpoints
+   */
   // Inspector endpoint (INSPECTOR, SUPERVISOR, ADMIN)
   fastify.get(
     "/inspector/scans",

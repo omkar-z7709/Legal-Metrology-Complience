@@ -26,7 +26,7 @@ node_modules/
 credentials/
 **/credentials/
 
-*.json
+# Service account & credential json files
 **/*-key.json
 **/*service-account*.json
 **/*credentials*.json
@@ -119,9 +119,9 @@ test-results/
 *.sqlite3
 *.db
 
-# ============================================
+
 # Misc
-# ============================================
+
 .cache/
 .parcel-cache/
 .turbo/

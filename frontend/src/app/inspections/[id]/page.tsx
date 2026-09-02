@@ -27,7 +27,7 @@ import {
   Scale,
   Sparkles,
 } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, authFetch } from "@/lib/api";
 
 export default function InspectionDetailPage({
   params,
@@ -57,11 +57,7 @@ export default function InspectionDetailPage({
     setError(null);
 
     try {
-      const scanRes = await fetch(`${API_BASE_URL}/api/scans/${id}`, {
-        headers: {
-          authorization: "Bearer dev-inspector",
-        },
-      });
+      const scanRes = await authFetch(`${API_BASE_URL}/api/scans/${id}`);
 
       const scanJson = await scanRes.json();
 
@@ -96,11 +92,10 @@ export default function InspectionDetailPage({
     setIsSubmittingReview(true);
     setReviewMessage(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/inspections/${id}/review`, {
+      const res = await authFetch(`${API_BASE_URL}/api/inspections/${id}/review`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          authorization: "Bearer dev-inspector",
         },
         body: JSON.stringify({
           decision: reviewDecision,
@@ -127,9 +122,8 @@ export default function InspectionDetailPage({
   const handleGenerateReport = async () => {
     setIsGeneratingReport(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/inspections/${id}/report`, {
+      const res = await authFetch(`${API_BASE_URL}/api/inspections/${id}/report`, {
         method: "POST",
-        headers: { authorization: "Bearer dev-inspector" },
       });
       const data = await res.json();
       if (data.success && data.data.pdfUrl) {

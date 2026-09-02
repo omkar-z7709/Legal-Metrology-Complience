@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/AuthContext";
 import {
   LayoutDashboard,
   ScanSearch,
@@ -16,7 +17,7 @@ import {
   Settings,
   Shield,
   LogOut,
-  ChevronRight,
+  UserCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -28,6 +29,7 @@ interface NavItem {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user, logout, isAuthenticated } = useAuth();
 
   const mainNav: NavItem[] = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -83,6 +85,28 @@ export function Sidebar() {
     </div>
   );
 
+  const getInitials = (name?: string) => {
+    if (!name) return "GO";
+    return name
+      .split(" ")
+      .map((part) => part[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+  };
+
+  const getRoleBadgeColor = (role?: string) => {
+    switch (role) {
+      case "ADMIN":
+        return "bg-amber-600";
+      case "SUPERVISOR":
+        return "bg-purple-600";
+      case "INSPECTOR":
+      default:
+        return "bg-[#12304A]";
+    }
+  };
+
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 min-h-screen">
       {/* Top Section */}
@@ -113,22 +137,27 @@ export function Sidebar() {
       {/* Bottom User Profile Section */}
       <div className="p-3 border-t border-slate-100 bg-slate-50/70">
         <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#12304A] text-white flex items-center justify-center text-xs font-bold">
-              SV
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className={`w-8 h-8 shrink-0 rounded-full text-white flex items-center justify-center text-xs font-bold ${getRoleBadgeColor(
+                user?.role,
+              )}`}
+            >
+              {getInitials(user?.name)}
             </div>
-            <div className="text-left">
-              <div className="text-xs font-semibold text-slate-900 leading-tight">
-                Sarthak Verma
+            <div className="text-left min-w-0">
+              <div className="text-xs font-semibold text-slate-900 leading-tight truncate">
+                {user?.name || (isAuthenticated ? "Official Officer" : "Guest Officer")}
               </div>
-              <div className="text-[10px] font-medium text-slate-500">
-                INSPECTOR • Dept. of LM
+              <div className="text-[10px] font-medium text-slate-500 truncate">
+                {user?.role || "INSPECTOR"} • {user?.department || "Legal Metrology"}
               </div>
             </div>
           </div>
           <button
-            title="Sign out"
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md transition-colors"
+            onClick={logout}
+            title="Sign out of portal"
+            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer shrink-0 ml-1"
           >
             <LogOut className="w-3.5 h-3.5" />
           </button>

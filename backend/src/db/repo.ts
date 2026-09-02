@@ -10,6 +10,7 @@ import {
   auditLogs,
   rules,
   users,
+  authorizedOfficers,
 } from "./schema.js";
 import { eq, desc } from "drizzle-orm";
 import { officialLegalMetrologyRules } from "./seed.js";
@@ -37,11 +38,59 @@ const memoryStore = {
   auditLogs: new Map<string, any>(),
   rules: new Map<string, any>(),
   users: new Map<string, any>(),
+  authorizedOfficers: new Map<string, any>(),
 };
 
 // Initialize In-Memory Seed Data
 for (const r of officialLegalMetrologyRules) {
   memoryStore.rules.set(r.id, r);
+}
+
+const defaultOfficers = [
+  {
+    id: "a1111111-1111-1111-1111-111111111111",
+    email: "test.inspector@lm.gov.in",
+    name: "Sarthak Verma (Test Inspector)",
+    role: "INSPECTOR",
+    department: "Legal Metrology Enforcement Directorate",
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "a2222222-2222-2222-2222-222222222222",
+    email: "test.supervisor@lm.gov.in",
+    name: "Anita Rao (Test Supervisor)",
+    role: "SUPERVISOR",
+    department: "Legal Metrology Zonal Office",
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "a3333333-3333-3333-3333-333333333333",
+    email: "test.admin@lm.gov.in",
+    name: "Director General (Test Admin)",
+    role: "ADMIN",
+    department: "Ministry of Consumer Affairs",
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "a4444444-4444-4444-4444-444444444444",
+    email: "inactive.officer@lm.gov.in",
+    name: "Suspended Officer (Test Inactive)",
+    role: "INSPECTOR",
+    department: "Legal Metrology Field Unit",
+    isActive: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+];
+
+for (const officer of defaultOfficers) {
+  memoryStore.authorizedOfficers.set(officer.email.toLowerCase(), officer);
 }
 
 export class DBRepo {
@@ -443,5 +492,74 @@ export class DBRepo {
         department: "Legal Metrology HQ",
       },
     ];
+  }
+
+  static async getAuthorizedOfficerByEmail(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (await isDatabaseLive()) {
+      try {
+        const [officer] = await db
+          .select()
+          .from(authorizedOfficers)
+          .where(eq(authorizedOfficers.email, normalizedEmail));
+        if (officer) return officer;
+      } catch {}
+    }
+    return memoryStore.authorizedOfficers.get(normalizedEmail) || null;
+  }
+
+  static async getAllAuthorizedOfficers() {
+    if (await isDatabaseLive()) {
+      try {
+        const list = await db.select().from(authorizedOfficers);
+        if (list.length > 0) return list;
+      } catch {}
+    }
+    return Array.from(memoryStore.authorizedOfficers.values());
+  }
+
+  static async upsertAuthorizedOfficer(officer: {
+    email: string;
+    name: string;
+    role: "INSPECTOR" | "SUPERVISOR" | "ADMIN";
+    department?: string;
+    isActive?: boolean;
+  }) {
+    const normalizedEmail = officer.email.trim().toLowerCase();
+    const entry = {
+      id: crypto.randomUUID(),
+      email: normalizedEmail,
+      name: officer.name,
+      role: officer.role,
+      department: officer.department || "Legal Metrology Enforcement",
+      isActive: officer.isActive !== undefined ? officer.isActive : true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    memoryStore.authorizedOfficers.set(normalizedEmail, entry);
+    if (await isDatabaseLive()) {
+      try {
+        await db
+          .insert(authorizedOfficers)
+          .values({
+            email: normalizedEmail,
+            name: entry.name,
+            role: entry.role,
+            department: entry.department,
+            isActive: entry.isActive,
+          })
+          .onConflictDoUpdate({
+            target: authorizedOfficers.email,
+            set: {
+              name: entry.name,
+              role: entry.role,
+              department: entry.department,
+              isActive: entry.isActive,
+              updatedAt: new Date(),
+            },
+          });
+      } catch {}
+    }
+    return entry;
   }
 }
