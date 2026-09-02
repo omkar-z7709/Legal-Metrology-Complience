@@ -509,36 +509,69 @@ export default function InspectionDetailPage({
                   description="Verifiable Legal Metrology Gazette clauses grounding each inspection check"
                 />
                 <CardBody className="space-y-3 text-xs">
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-                    <div className="font-semibold text-[#12304A] flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                      Rule 6(1)(e) — Retail Sale Price Declaration
-                    </div>
-                    <p className="text-slate-600 text-[11px] leading-relaxed">
-                      "The retail sale price of the package shall clearly
-                      indicate the Maximum Retail Price in Indian Rupees
-                      inclusive of all taxes."
-                    </p>
-                    <div className="text-[10px] text-slate-400">
-                      Gazette Citation: Legal Metrology (Packaged Commodities)
-                      Rules, 2011 (Amended 2022)
-                    </div>
-                  </div>
+                  {(() => {
+                    const citations: any[] = [];
+                    const seen = new Set<string>();
 
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-                    <div className="font-semibold text-[#12304A] flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                      Rule 6(1)(f) — Consumer Care Contact Details
-                    </div>
-                    <p className="text-slate-600 text-[11px] leading-relaxed">
-                      "Mandates telephone helpline number and email address of
-                      authorized personnel for consumer grievance redressal."
-                    </p>
-                    <div className="text-[10px] text-slate-400">
-                      Gazette Citation: Legal Metrology Rules, 2011, Sub-rule
-                      (1)(f)
-                    </div>
-                  </div>
+                    // 1. Gather specific violation legal context
+                    if (analysis?.violations) {
+                      for (const v of analysis.violations) {
+                        if (v.legalContext) {
+                          for (const lc of v.legalContext) {
+                            const key = lc.ruleId || lc.ruleNumber;
+                            if (key && !seen.has(key)) {
+                              seen.add(key);
+                              citations.push(lc);
+                            }
+                          }
+                        }
+                      }
+                    }
+
+                    // 2. Gather general retrieved context for the commodity
+                    if (analysis?.retrievedContext) {
+                      for (const rc of analysis.retrievedContext) {
+                        const key = rc.ruleId || rc.ruleNumber;
+                        if (key && !seen.has(key)) {
+                          seen.add(key);
+                          citations.push(rc);
+                        }
+                      }
+                    }
+
+                    if (citations.length === 0) {
+                      return (
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-[11px] text-center">
+                          All mandatory declarations verified against official Legal Metrology Rules, 2011.
+                        </div>
+                      );
+                    }
+
+                    return citations.map((citation, idx) => (
+                      <div
+                        key={`${citation.ruleId || idx}-${idx}`}
+                        className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="font-semibold text-[#12304A] flex items-center gap-1.5">
+                            <BookOpen className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            <span>{citation.ruleNumber}</span>
+                          </div>
+                          {citation.similarityScore > 0 && (
+                            <span className="font-mono text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-200">
+                              {Math.round(citation.similarityScore * 100)}% Match
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-slate-700 text-[11px] leading-relaxed">
+                          "{citation.statutoryObligation || citation.text}"
+                        </p>
+                        <div className="text-[10px] text-slate-500 font-medium">
+                          Gazette Citation: {citation.sourceAct} {citation.clause ? `(${citation.clause})` : ""}
+                        </div>
+                      </div>
+                    ));
+                  })()}
                 </CardBody>
               </Card>
 

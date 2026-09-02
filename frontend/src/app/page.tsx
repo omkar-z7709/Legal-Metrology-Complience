@@ -159,7 +159,7 @@ export default function DashboardPage() {
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar
           breadcrumbs={[{ label: "Enforcement Dashboard" }]}
-          onRefresh={loadHealth}
+          // onRefresh={loadHealth}
           isRefreshing={isRefreshing}
         />
 

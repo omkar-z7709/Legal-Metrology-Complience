@@ -5,20 +5,6 @@ import {
   StructuredDeclarations,
 } from "./extraction.schema.js";
 
-// const EXTRACTION_SYSTEM_PROMPT = `
-// You are a Legal Metrology (Packaged Commodities) Rules, 2011 Extraction Specialist.
-// Your task is to analyze OCR text extracted from a commodity package and extract mandatory declarations into structured JSON.
-
-// CRITICAL RULES:
-// 1. ONLY extract information that is explicitly stated in the OCR text.
-// 2. If a declaration (e.g. consumer care, date of manufacture, country of origin, packer) is ABSENT or NOT FOUND, you MUST set "value": null and "source_text": null.
-// 3. NEVER guess, assume, or invent missing information.
-// 4. For MRP: extract numeric amount, check if 'incl. of all taxes' or 'inclusive of all taxes' is present.
-// 5. For Net Quantity: extract standard metric unit (e.g. '1 L', '500 g', '200 ml', '1 kg', '10 N').
-// 6. For Date of Manufacture: extract month and year (e.g., '08/2026', 'August 2026').
-// 7. Return ONLY pure valid JSON matching the required schema.
-// `;
-
 const EXTRACTION_SYSTEM_PROMPT = `
 You are a Legal Metrology (Packaged Commodities) Rules, 2011 Extraction Specialist.
 
@@ -220,17 +206,6 @@ export class GeminiExtractor {
     // 1. If Gemini API key is available, attempt Gemini model with fast timeout
     if (this.ai && process.env.GEMINI_API_KEY) {
       try {
-        //         const prompt = `
-        // OCR TEXT FROM PRODUCT PACKAGE:
-        // """
-        // ${ocrText}
-        // """
-
-        // Extract all packaged commodity declarations according to Legal Metrology Rules, 2011.
-        // Output strictly valid JSON with keys:
-        // generic_name, manufacturer, packer, importer, net_quantity, mrp, date_of_manufacture, consumer_care, country_of_origin, other_declarations.
-        // `;
-
         const prompt = `
 OCR TEXT FROM PRODUCT PACKAGE:
 
@@ -242,7 +217,7 @@ Extract the declarations from this OCR text.
 
 Follow the exact JSON structure and extraction rules provided in the system instruction.
 `;
-        const modelName = process.env.GEMINI_MODEL || "gemini-3.7-flash";
+        const modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
         console.log(`[GEMINI] Calling model '${modelName}' for declaration extraction`);
         const callPromise = this.ai.models.generateContent({
           model: modelName,
@@ -431,21 +406,6 @@ Follow the exact JSON structure and extraction rules provided in the system inst
         ),
       },
       country_of_origin: {
-        // value: originMatch
-        //   ? originMatch[1]?.trim()
-        //   : text.toLowerCase().includes("india")
-        //     ? "India"
-        //     : null,
-        // source_text: originMatch
-        //   ? originMatch[0]
-        //   : text.toLowerCase().includes("india")
-        //     ? "India"
-        //     : null,
-        // confidence: originMatch
-        //   ? 0.95
-        //   : text.toLowerCase().includes("india")
-        //     ? 0.85
-        //     : 0.0,
         value: originMatch ? originMatch[1]?.trim() : null,
         source_text: originMatch ? originMatch[0] : null,
         confidence: originMatch ? 0.95 : 0.0,
