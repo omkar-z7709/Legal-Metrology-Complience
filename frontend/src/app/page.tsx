@@ -6,7 +6,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import { Card, CardHeader, CardBody, CardFooter } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusType } from "@/components/ui/Badge";
-import { checkBackendHealth, BackendHealthResponse } from "@/lib/api";
+import { checkBackendHealth, BackendHealthResponse, API_BASE_URL } from "@/lib/api";
 import {
   ShieldCheck,
   AlertOctagon,
@@ -141,11 +141,12 @@ export default function DashboardPage() {
     loadDashboardData();
   }, []);
 
-  const totalInspections = stats?.metrics?.totalInspections ?? 1248;
-  const compliant = stats?.metrics?.compliant ?? 823;
-  const nonCompliant = stats?.metrics?.nonCompliant ?? 312;
-  const requiresReview = stats?.metrics?.requiresReview ?? 113;
-  const complianceRate = stats?.metrics?.complianceRatePercentage ?? 66;
+  const totalInspections = stats?.metrics?.totalInspections ?? 0;
+  const compliant = stats?.metrics?.compliant ?? 0;
+  const nonCompliant = stats?.metrics?.nonCompliant ?? 0;
+  const requiresReview = stats?.metrics?.requiresReview ?? 0;
+  const averageComplianceScore = stats?.metrics?.averageComplianceScore ?? 0;
+  const complianceRate = stats?.metrics?.complianceRatePercentage ?? (totalInspections > 0 ? Math.round((compliant / totalInspections) * 100) : 0);
   const recentList = stats?.recentInspections && stats.recentInspections.length > 0
     ? stats.recentInspections
     : null;

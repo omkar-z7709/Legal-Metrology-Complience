@@ -205,8 +205,7 @@ export class GeminiExtractor {
 
     // 1. If Gemini API key is available, attempt Gemini model with fast timeout
     if (this.ai && process.env.GEMINI_API_KEY) {
-      try {
-        const prompt = `
+      const prompt = `
 OCR TEXT FROM PRODUCT PACKAGE:
 
 """
@@ -217,46 +216,82 @@ Extract the declarations from this OCR text.
 
 Follow the exact JSON structure and extraction rules provided in the system instruction.
 `;
-        const modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-        console.log(`[GEMINI] Calling model '${modelName}' for declaration extraction`);
-        const callPromise = this.ai.models.generateContent({
-          model: modelName,
-          contents: prompt,
-          config: {
-            systemInstruction: EXTRACTION_SYSTEM_PROMPT,
-            responseMimeType: "application/json",
-          },
-        });
+      const modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+      const maxRetries = 2;
+      let attempt = 0;
+      let response: any = null;
 
-        const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 25000);
+      try {
+        while (attempt <= maxRetries) {
+          try {
+            console.log(`[GEMINI] Calling model '${modelName}' for declaration extraction (Attempt ${attempt + 1})`);
+            const callPromise = this.ai.models.generateContent({
+              model: modelName,
+              contents: prompt,
+              config: {
+                systemInstruction: EXTRACTION_SYSTEM_PROMPT,
+                responseMimeType: "application/json",
+              },
+            });
 
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(
-            () =>
-              reject(new Error(`Gemini request timeout after ${timeoutMs}ms (offline fallback)`)),
-            timeoutMs,
-          ),
-        );
+            const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 25000);
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(
+                () => reject(new Error(`Gemini request timeout after ${timeoutMs}ms`)),
+                timeoutMs,
+              ),
+            );
 
-        const response: any = await Promise.race([callPromise, timeoutPromise]);
+            response = await Promise.race([callPromise, timeoutPromise]);
+            console.log(`[GEMINI] RESPONSE RECEIVED`);
+            break;
+          } catch (err: any) {
+            const status = err.status || err.statusCode || (err.message?.includes("429") ? 429 : err.message?.includes("401") ? 401 : err.message?.includes("404") ? 404 : 500);
+            const message = err.message || "Unknown Gemini API error";
+            console.warn(`[GEMINI] API FAILED status: ${status} message: ${message}`);
 
-        let rawJsonText =
-          typeof response.text === "function"
-            ? response.text()
-            : typeof response.text === "string"
-              ? response.text
-              : response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+            const isRetryable = (status === 429 || status >= 500 || message.includes("timeout")) && attempt < maxRetries;
+            if (isRetryable) {
+              attempt++;
+              const backoffMs = attempt * 1000;
+              console.log(`[GEMINI] Retrying request in ${backoffMs}ms...`);
+              await new Promise((r) => setTimeout(r, backoffMs));
+            } else {
+              throw err;
+            }
+          }
+        }
 
-        // Strip markdown code fences if model wrapped in ```json ... ```
-        rawJsonText = rawJsonText
-          .replace(/^```(?:json)?\s*/i, "")
-          .replace(/\s*```$/i, "")
-          .trim();
+        if (response) {
+          let rawJsonText =
+            typeof response.text === "function"
+              ? response.text()
+              : typeof response.text === "string"
+                ? response.text
+                : response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
 
-        const parsedJson = JSON.parse(rawJsonText);
-        const validated = structuredDeclarationsSchema.parse(parsedJson);
-        console.log(`[GEMINI] Successfully extracted and validated structured declarations.`);
-        return validated;
+          rawJsonText = rawJsonText
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+
+          let parsedJson: any;
+          try {
+            parsedJson = JSON.parse(rawJsonText);
+          } catch (jsonErr: any) {
+            console.warn(`[GEMINI] JSON PARSE FAILED: ${jsonErr.message}`);
+            throw jsonErr;
+          }
+
+          try {
+            const validated = structuredDeclarationsSchema.parse(parsedJson);
+            console.log(`[GEMINI] Successfully extracted and validated structured declarations.`);
+            return validated;
+          } catch (zodErr: any) {
+            console.warn(`[VALIDATION] ZOD FAILED: ${zodErr.message}`);
+            throw zodErr;
+          }
+        }
       } catch (err: any) {
         console.warn(
           `[GEMINI] Notice: ${err.message}. Using deterministic fallback parser.`,

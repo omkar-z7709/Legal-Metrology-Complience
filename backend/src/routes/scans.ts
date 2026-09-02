@@ -23,6 +23,7 @@ export const scanRoutes: FastifyPluginAsync = async (
       let category = "Packaged Food";
       let brand = "";
       let location = "Inspection Field Office";
+      let listingText: string | undefined;
 
       const parts = request.parts({
         limits: {
@@ -75,6 +76,10 @@ export const scanRoutes: FastifyPluginAsync = async (
           if (part.fieldname === "location") {
             location = String(value);
           }
+
+          if (part.fieldname === "listingText") {
+            listingText = String(value);
+          }
         }
       }
 
@@ -124,15 +129,21 @@ export const scanRoutes: FastifyPluginAsync = async (
         status: "PROCESSING",
         complianceStatus: "REQUIRES_REVIEW",
         complianceScore: "0.00",
+        ...(listingText ? { analysis: { listingText } } : {}),
       });
 
       console.log(
         `[UPLOAD] Received ${files.length} package image(s) for product '${productName}'`
       );
 
+      const uploadStart = Date.now();
+      let totalPrepTime = 0;
+      let totalStorageTime = 0;
+
       const storedImagePairs = await Promise.all(
         files.map(async (file, idx) => {
           // 1. Store original uploaded image
+          const storeOrigStart = Date.now();
           console.log(`[STORAGE] Uploading original package image ${idx + 1}/${files.length}: ${file.filename}`);
           const origUpload = await StorageService.uploadFile(
             file.buffer,
@@ -149,11 +160,15 @@ export const scanRoutes: FastifyPluginAsync = async (
             contentType: file.mimetype,
             fileSizeBytes: file.buffer.length,
           });
+          const origStoreMs = Date.now() - storeOrigStart;
 
           // 2. Create and store preprocessed image derivative
           console.log(`[PREPROCESS] Preprocessing image ${idx + 1}/${files.length}: ${file.filename}`);
+          const prepStart = Date.now();
           const preprocessResult = await PreprocessService.preprocess(file.buffer);
+          const prepMs = Date.now() - prepStart;
 
+          const storePrepStart = Date.now();
           const prepUpload = await StorageService.uploadFile(
             preprocessResult.processedBuffer,
             `prep_${idx + 1}_${file.filename}.jpg`,
@@ -171,12 +186,21 @@ export const scanRoutes: FastifyPluginAsync = async (
             width: preprocessResult.width,
             height: preprocessResult.height,
           });
+          const prepStoreMs = Date.now() - storePrepStart;
+
+          totalPrepTime += prepMs;
+          totalStorageTime += origStoreMs + prepStoreMs;
 
           return [origRecord, prepRecord];
         }),
       );
 
       const storedImages = storedImagePairs.flat();
+      const uploadDurationMs = Date.now() - uploadStart;
+
+      console.log(`[PERF] Preprocessing: ${totalPrepTime} ms`);
+      console.log(`[PERF] Storage: ${totalStorageTime} ms`);
+      console.log(`[PERF] Upload: ${uploadDurationMs} ms`);
       console.log(`[STORAGE] Stored ${storedImages.length} total image records (${files.length} ORIGINAL + ${files.length} PREPROCESSED)`);
 
       return reply.status(201).send({

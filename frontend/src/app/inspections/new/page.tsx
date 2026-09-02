@@ -41,6 +41,7 @@ export default function NewInspectionPage() {
   const [category, setCategory] = useState("Edible Oils");
   const [brand, setBrand] = useState("");
   const [location, setLocation] = useState("Central Enforcement Zone");
+  const [listingText, setListingText] = useState("");
 
   // State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -145,6 +146,9 @@ export default function NewInspectionPage() {
       formData.append("category", category);
       formData.append("brand", brand);
       formData.append("location", location);
+      if (listingText) {
+        formData.append("listingText", listingText);
+      }
 
       console.log(
         `[FRONTEND] Uploading ${selectedFiles.length} image(s) for inspection:`,
@@ -446,6 +450,19 @@ export default function NewInspectionPage() {
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
                         placeholder="e.g. Central Retail Zone"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">
+                        Optional E-Commerce Product Listing Text / URL (Task 9)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={listingText}
+                        onChange={(e) => setListingText(e.target.value)}
+                        placeholder="Paste online product listing text or URL to verify package vs listing consistency..."
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
                       />
                     </div>

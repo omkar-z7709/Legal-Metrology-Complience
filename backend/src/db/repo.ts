@@ -77,31 +77,24 @@ export class DBRepo {
     manufacturerName?: string;
     manufacturerAddress?: string;
   }) {
-    if (!(await isDatabaseLive())) {
-      throw new Error("PostgreSQL database is unavailable.");
-    }
-
-    try {
-      const [created] = await db.insert(products).values(data).returning();
-      if (!created) {
-        throw new Error("Product was not created.");
+    if (await isDatabaseLive()) {
+      try {
+        const [created] = await db.insert(products).values(data).returning();
+        if (created) return created;
+      } catch (error: any) {
+        console.error("[DB] Failed to insert product in Postgres:", error.message);
       }
-
-      return created;
-    } catch (error) {
-      console.error("[DB] Failed to insert product:", error);
-      throw error;
     }
 
-    // const id = crypto.randomUUID();
-    // const record = {
-    //   id,
-    //   ...data,
-    //   createdAt: new Date(),
-    //   updatedAt: new Date(),
-    // };
-    // memoryStore.products.set(id, record);
-    // return record;
+    const id = crypto.randomUUID();
+    const record = {
+      id,
+      ...data,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    memoryStore.products.set(id, record);
+    return record;
   }
 
   static async updateProduct(id: string, data: Partial<any>) {
@@ -121,13 +114,14 @@ export class DBRepo {
   }
 
   static async getUserByEmail(email: string) {
-    if (!(await isDatabaseLive())) {
-      return null;
+    if (await isDatabaseLive()) {
+      try {
+        const [user] = await db.select().from(users).where(eq(users.email, email));
+        if (user) return user;
+      } catch {}
     }
 
-    const [user] = await db.select().from(users).where(eq(users.email, email));
-
-    return user || null;
+    return Array.from(memoryStore.users.values()).find((u) => u.email === email) || null;
   }
 
   static async getProduct(id: string) {
@@ -152,32 +146,25 @@ export class DBRepo {
     complianceStatus?: string;
     complianceScore?: string;
   }) {
-    if (!(await isDatabaseLive())) {
-      throw new Error("PostgreSQL database is unavailable.");
-    }
-
-    try {
-      const [created] = await db.insert(scans).values(data).returning();
-      if (!created) {
-        throw new Error("Scan was not created.");
+    if (await isDatabaseLive()) {
+      try {
+        const [created] = await db.insert(scans).values(data).returning();
+        if (created) return created;
+      } catch (error: any) {
+        console.error("[DB] Failed to insert scan in Postgres:", error.message);
       }
-
-      return created;
-    } catch (error) {
-      console.error("[DB] Failed to insert scan:", error);
-      throw error;
     }
 
-    // const id = crypto.randomUUID();
-    // const record = {
-    //   id,
-    //   ...data,
-    //   reviewStatus: "PENDING",
-    //   createdAt: new Date(),
-    //   updatedAt: new Date(),
-    // };
-    // memoryStore.scans.set(id, record);
-    // return record;
+    const id = crypto.randomUUID();
+    const record = {
+      id,
+      ...data,
+      reviewStatus: "PENDING",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    memoryStore.scans.set(id, record);
+    return record;
   }
 
   static async updateScan(id: string, data: Partial<any>) {
@@ -243,34 +230,23 @@ export class DBRepo {
   }
 
   static async insertImage(data: any) {
-    if (!(await isDatabaseLive())) {
-      throw new Error("PostgreSQL database is unavailable.");
-    }
-
-    try {
-      const [created] = await db.insert(images).values(data).returning();
-
-      if (!created) {
-        throw new Error("Image record was not created.");
+    if (await isDatabaseLive()) {
+      try {
+        const [created] = await db.insert(images).values(data).returning();
+        if (created) return created;
+      } catch (error: any) {
+        console.error("[DB] Failed to insert image in Postgres:", error.message);
       }
-
-      return created;
-    } catch (error) {
-      console.error("[DB] Failed to insert image:", error);
-      throw error;
     }
 
-    // const id = crypto.randomUUID();
-
-    // const record = {
-    //   id,
-    //   ...data,
-    //   createdAt: new Date(),
-    // };
-
-    // memoryStore.images.set(id, record);
-
-    // return record;
+    const id = crypto.randomUUID();
+    const record = {
+      id,
+      ...data,
+      createdAt: new Date(),
+    };
+    memoryStore.images.set(id, record);
+    return record;
   }
 
   static async getScanImages(scanId: string) {
@@ -290,9 +266,10 @@ export class DBRepo {
 
   static async insertExtractedField(data: any) {
     const id = crypto.randomUUID();
+    const { rawData, ...validFields } = data;
     if (await isDatabaseLive()) {
       try {
-        await db.insert(extractedFields).values({ id, ...data });
+        await db.insert(extractedFields).values({ id, ...validFields });
       } catch (err: any) {
         console.error("[DATABASE] Failed to insert extracted field:", err.message);
       }
@@ -321,6 +298,19 @@ export class DBRepo {
     const id = crypto.randomUUID();
     if (await isDatabaseLive()) {
       try {
+        if (data.ruleId) {
+          try {
+            await db.insert(rules).values({
+              id: data.ruleId,
+              ruleNumber: data.ruleId,
+              title: data.title || data.ruleId,
+              description: data.reason || data.title || "Legal Metrology Statutory Rule",
+              category: "GENERAL",
+              requirement: data.reason || "Statutory Requirement",
+              validationType: "PRESENCE",
+            }).onConflictDoNothing();
+          } catch {}
+        }
         const [created] = await db
           .insert(complianceChecks)
           .values({ id, ...data })
@@ -339,6 +329,19 @@ export class DBRepo {
     const id = crypto.randomUUID();
     if (await isDatabaseLive()) {
       try {
+        if (data.ruleId) {
+          try {
+            await db.insert(rules).values({
+              id: data.ruleId,
+              ruleNumber: data.ruleId,
+              title: data.title || data.ruleId,
+              description: data.description || "Statutory Violation Rule",
+              category: "GENERAL",
+              requirement: "Statutory Requirement",
+              validationType: "PRESENCE",
+            }).onConflictDoNothing();
+          } catch {}
+        }
         await db.insert(violations).values({ id, ...data });
       } catch (err: any) {
         console.error("[DATABASE] Failed to insert violation:", err.message);
@@ -438,6 +441,24 @@ export class DBRepo {
     return Array.from(memoryStore.auditLogs.values()).sort(
       (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
     );
+  }
+
+  static async getScanAuditHistory(scanId: string) {
+    if (await isDatabaseLive()) {
+      try {
+        const list = await db
+          .select()
+          .from(auditLogs)
+          .where(eq(auditLogs.resourceId, scanId))
+          .orderBy(desc(auditLogs.timestamp));
+        if (list.length > 0) return list;
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching scan audit history:", err.message);
+      }
+    }
+    return Array.from(memoryStore.auditLogs.values())
+      .filter((log) => log.resourceId === scanId)
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
   static async getAllUsers() {

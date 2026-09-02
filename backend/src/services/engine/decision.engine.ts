@@ -6,6 +6,7 @@ import { MRPValidator } from "./validators/mrp.validator.js";
 import { QuantityValidator } from "./validators/quantity.validator.js";
 import { DateValidator } from "./validators/date.validator.js";
 import { VisionQualityValidator } from "./validators/vision.validator.js";
+import { PlacementValidator } from "./validators/placement.validator.js";
 import { RagLegalService, LegalContextChunk } from "../rag/rag.service.js";
 
 export interface EnrichedViolation extends ValidationCheckResult {
@@ -36,6 +37,7 @@ export class ComplianceDecisionEngine {
     new QuantityValidator(),
     new DateValidator(),
     new VisionQualityValidator(),
+    new PlacementValidator(),
   ];
 
   /**
@@ -64,6 +66,7 @@ export class ComplianceDecisionEngine {
     console.log(`[RAG] Constructed dynamic inspection query: "${dynamicQuery}"`);
 
     // 2. Retrieve authoritative Legal Metrology context chunks for this commodity
+    const ragStart = Date.now();
     const retrievedContext = await RagLegalService.retrieveLegalContext(
       dynamicQuery,
       classification.category,
@@ -71,11 +74,13 @@ export class ComplianceDecisionEngine {
     );
 
     // 3. Run each deterministic validator
+    const compStart = Date.now();
     const allChecks: ValidationCheckResult[] = [];
     for (const validator of this.validators) {
       const results = validator.validate(declarations, classification, rawOcrText);
       allChecks.push(...results);
     }
+    const compTime = Date.now() - compStart;
 
     const passedChecks = allChecks.filter((c) => c.status === "PASS");
     const failedChecks = allChecks.filter((c) => c.status === "FAIL");
@@ -95,6 +100,10 @@ export class ComplianceDecisionEngine {
         };
       })
     );
+    const totalRagTime = (Date.now() - ragStart) - compTime;
+
+    console.log(`[PERF] RAG: ${totalRagTime} ms`);
+    console.log(`[PERF] Compliance: ${compTime} ms`);
 
     // Calculate deterministic compliance score
     // Critical failure: heavy penalty (-25%), High: (-15%), Medium: (-8%), Review: (-5%)

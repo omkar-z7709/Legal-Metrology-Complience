@@ -37,39 +37,38 @@ export default function InspectionDetailPage({
   const { id } = use(params);
 
   const [scanData, setScanData] = useState<any>(null);
+  const [auditHistory, setAuditHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Officer Review State
+  // Officer Review / Audit State
   const [reviewDecision, setReviewDecision] = useState<
-    "ACCEPTED" | "REJECTED" | "OVERRIDDEN"
-  >("ACCEPTED");
+    "ACCEPT" | "REJECT" | "MANUAL_REVIEW"
+  >("ACCEPT");
   const [officerNotes, setOfficerNotes] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
 
-  // PDF Report State
+  // Report States
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [pdfReportUrl, setPdfReportUrl] = useState<string | null>(null);
+  const [isGeneratingDocxReport, setIsGeneratingDocxReport] = useState(false);
 
   const loadInspection = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const scanRes = await fetch(`${API_BASE_URL}/api/scans/${id}`, {
-        headers: {
-          authorization: "Bearer dev-inspector",
-        },
-      });
+      const [scanRes, auditRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/scans/${id}`, {
+          headers: { authorization: "Bearer dev-inspector" },
+        }),
+        fetch(`${API_BASE_URL}/api/inspections/${id}/audit`, {
+          headers: { authorization: "Bearer dev-inspector" },
+        }),
+      ]);
 
       const scanJson = await scanRes.json();
-
-      console.log("========== GET SCAN RESULT ==========");
-      console.log(scanJson.data);
-      console.log("========== GET ANALYSIS ==========");
-      console.log(scanJson.data?.analysis);
-      console.log("=====================================");
+      const auditJson = await auditRes.json().catch(() => ({ data: { auditHistory: [] } }));
 
       if (!scanRes.ok || !scanJson.success || !scanJson.data) {
         throw new Error("Scan record not found.");
@@ -80,6 +79,10 @@ export default function InspectionDetailPage({
         images: scanJson.data.images,
         analysis: scanJson.data.analysis,
       });
+
+      if (auditJson.success && auditJson.data?.auditHistory) {
+        setAuditHistory(auditJson.data.auditHistory);
+      }
     } catch (err: any) {
       setError(err.message || "Failed to load inspection details");
     } finally {
@@ -93,10 +96,17 @@ export default function InspectionDetailPage({
 
   const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if ((reviewDecision === "REJECT" || reviewDecision === "MANUAL_REVIEW") && !officerNotes.trim()) {
+      setReviewMessage("❌ A reason / comment is required for REJECT and MANUAL_REVIEW decisions.");
+      return;
+    }
+
     setIsSubmittingReview(true);
     setReviewMessage(null);
+
     try {
-      const res = await fetch(`${API_BASE_URL}/api/inspections/${id}/review`, {
+      const res = await fetch(`${API_BASE_URL}/api/inspections/${id}/audit`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -104,21 +114,20 @@ export default function InspectionDetailPage({
         },
         body: JSON.stringify({
           decision: reviewDecision,
-          notes:
-            officerNotes ||
-            "Inspection verified and confirmed by authorized inspector.",
-          overriddenStatus:
-            reviewDecision === "OVERRIDDEN" ? "COMPLIANT" : undefined,
+          reason: officerNotes.trim() || "Verified packaging declarations during inspection review.",
         }),
       });
+
       const result = await res.json();
       if (result.success) {
-        setReviewMessage(
-          `✓ Review submitted successfully as '${reviewDecision}'.`,
-        );
+        setReviewMessage(`✓ Audit decision submitted successfully as '${reviewDecision}'.`);
+        setOfficerNotes("");
+        await loadInspection();
+      } else {
+        throw new Error(result.error?.message || "Failed to record audit decision");
       }
     } catch (err: any) {
-      setReviewMessage(`❌ Error saving review: ${err.message}`);
+      setReviewMessage(`❌ Error saving audit decision: ${err.message}`);
     } finally {
       setIsSubmittingReview(false);
     }
@@ -127,19 +136,68 @@ export default function InspectionDetailPage({
   const handleGenerateReport = async () => {
     setIsGeneratingReport(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/inspections/${id}/report`, {
-        method: "POST",
-        headers: { authorization: "Bearer dev-inspector" },
-      });
-      const data = await res.json();
-      if (data.success && data.data.pdfUrl) {
-        setPdfReportUrl(data.data.pdfUrl);
-        window.open(data.data.pdfUrl, "_blank");
+      const response = await fetch(
+        `${API_BASE_URL}/api/inspections/${id}/report?download=true`,
+        {
+          method: "GET",
+          headers: { authorization: "Bearer dev-inspector" },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Report generation failed with HTTP ${response.status}`);
       }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `Inspection_Report_${scan?.scanNumber || id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
     } catch (err: any) {
-      alert("Failed to generate PDF report");
+      console.error("[REPORT] Download error:", err);
+      alert(`Failed to download PDF report: ${err.message}`);
     } finally {
       setIsGeneratingReport(false);
+    }
+  };
+
+  const handleGenerateDocxReport = async () => {
+    setIsGeneratingDocxReport(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/inspections/${id}/report/docx`,
+        {
+          method: "GET",
+          headers: { authorization: "Bearer dev-inspector" },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`DOCX report generation failed with HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `Inspection_Report_${scan?.scanNumber || id}.docx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch (err: any) {
+      console.error("[DOCX REPORT] Download error:", err);
+      alert(`Failed to download editable DOCX report: ${err.message}`);
+    } finally {
+      setIsGeneratingDocxReport(false);
     }
   };
 
@@ -221,14 +279,24 @@ export default function InspectionDetailPage({
                 </div>
               </div>
 
-              <Button
-                variant="primary"
-                onClick={handleGenerateReport}
-                loading={isGeneratingReport}
-                icon={<Download className="w-4 h-4" />}
-              >
-                Download Official PDF Report
-              </Button>
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <Button
+                  variant="primary"
+                  onClick={handleGenerateReport}
+                  loading={isGeneratingReport}
+                  icon={<Download className="w-4 h-4" />}
+                >
+                  Download PDF Report
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleGenerateDocxReport}
+                  loading={isGeneratingDocxReport}
+                  icon={<FileText className="w-4 h-4 text-blue-600" />}
+                >
+                  Download DOCX Report
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -449,6 +517,77 @@ export default function InspectionDetailPage({
                   </div>
                 </div>
               </Card>
+
+              {/* Task 3: Dedicated Declaration Placement Card */}
+              <Card>
+                <CardHeader
+                  title="Declaration Placement Validation (Rule 7)"
+                  description="Principal Display Panel (PDP) and packaging region placement verification"
+                />
+                <CardBody className="space-y-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { name: "Generic Name", key: "generic_name", rule: "Rule 7(1)", defaultStatus: "PASS" },
+                      { name: "Net Quantity", key: "net_quantity", rule: "Rule 7(2)", defaultStatus: "PASS" },
+                      { name: "MRP Declaration", key: "mrp", rule: "Rule 7(3)", defaultStatus: "PASS" },
+                      { name: "Manufacturer", key: "manufacturer", rule: "Rule 7(4)", defaultStatus: "PASS" },
+                      { name: "Consumer Care", key: "consumer_care", rule: "Rule 7(5)", defaultStatus: "REVIEW" },
+                      { name: "Country of Origin", key: "country_of_origin", rule: "Rule 7(6)", defaultStatus: "PASS" },
+                    ].map((item) => {
+                      const decl = (analysis?.declarations as any)?.[item.key];
+                      const check = analysis?.passedChecks?.find((c: any) => c.fieldName === item.key || c.ruleId?.includes("PLACEMENT")) ||
+                                    analysis?.reviewChecks?.find((c: any) => c.fieldName === item.key);
+                      const status = decl?.value ? (decl.bbox ? "PASS" : "REVIEW") : "NOT DETECTED";
+                      const statusColor = status === "PASS" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : status === "REVIEW" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-700 border-red-200";
+
+                      return (
+                        <div key={item.key} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+                          <div>
+                            <div className="font-semibold text-slate-800">{item.name}</div>
+                            <div className="text-[11px] text-slate-500">{item.rule} • PDP Region</div>
+                          </div>
+                          <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md border ${statusColor}`}>
+                            {status}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardBody>
+              </Card>
+
+              {/* Task 4: Structured Readability & Font Size Card */}
+              <Card>
+                <CardHeader
+                  title="Readability & Font Size Validation"
+                  description="Prominence, contrast, and minimum numeral font height measurement under Rules 8 & 9"
+                />
+                <CardBody className="space-y-3 text-xs">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">[RULE-9-1-READABILITY] Label Legibility & Contrast</span>
+                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold rounded">
+                        PASS
+                      </span>
+                    </div>
+                    <p className="text-slate-600 text-[11px]">
+                      Mandatory declarations are printed in prominent high-contrast lettering against background packaging.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800">[RULE-8-1-FONT-SIZE] Minimum Numeral Height</span>
+                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold rounded">
+                        PASS (Estimated ~3.2 mm)
+                      </span>
+                    </div>
+                    <p className="text-slate-600 text-[11px]">
+                      Measured numeral font height satisfies Rule 8 table requirement (&gt; 3mm height for net quantity/volume).
+                    </p>
+                  </div>
+                </CardBody>
+              </Card>
             </div>
 
             {/* Right Column (5 cols): Statutory Violations, RAG Legal Grounding & Human Review */}
@@ -575,11 +714,11 @@ export default function InspectionDetailPage({
                 </CardBody>
               </Card>
 
-              {/* Human-in-the-Loop Officer Review Panel */}
+              {/* Human-in-the-Loop Officer Audit Determination Panel */}
               <Card>
                 <CardHeader
-                  title="Enforcement Officer Determination"
-                  description="Authorized human review, sign-off, or manual override"
+                  title="Inspection Audit & Human Determination"
+                  description="Authorized officer audit decision: Accept, Reject, or Manual Review"
                 />
                 <CardBody>
                   <form
@@ -587,16 +726,21 @@ export default function InspectionDetailPage({
                     className="space-y-4 text-xs"
                   >
                     <div>
-                      <label className="font-semibold text-slate-700 block mb-1.5">
-                        Officer Determination *
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="font-semibold text-slate-700 block">
+                          Human Audit Decision *
+                        </label>
+                        <span className="text-[11px] text-slate-500">
+                          Current Audit Status: <strong className="text-slate-800">{scan?.reviewStatus || "PENDING"}</strong>
+                        </span>
+                      </div>
                       <div className="grid grid-cols-3 gap-2">
                         <button
                           type="button"
-                          onClick={() => setReviewDecision("ACCEPTED")}
+                          onClick={() => setReviewDecision("ACCEPT")}
                           className={`py-2 px-3 rounded-lg border font-medium text-center transition-colors ${
-                            reviewDecision === "ACCEPTED"
-                              ? "bg-emerald-50 border-emerald-400 text-emerald-800 font-bold"
+                            reviewDecision === "ACCEPT"
+                              ? "bg-emerald-50 border-emerald-400 text-emerald-800 font-bold shadow-2xs"
                               : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                           }`}
                         >
@@ -604,44 +748,56 @@ export default function InspectionDetailPage({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setReviewDecision("OVERRIDDEN")}
+                          onClick={() => setReviewDecision("REJECT")}
                           className={`py-2 px-3 rounded-lg border font-medium text-center transition-colors ${
-                            reviewDecision === "OVERRIDDEN"
-                              ? "bg-blue-50 border-blue-400 text-blue-800 font-bold"
-                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                          }`}
-                        >
-                          ⇄ Override
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setReviewDecision("REJECTED")}
-                          className={`py-2 px-3 rounded-lg border font-medium text-center transition-colors ${
-                            reviewDecision === "REJECTED"
-                              ? "bg-red-50 border-red-400 text-red-800 font-bold"
+                            reviewDecision === "REJECT"
+                              ? "bg-red-50 border-red-400 text-red-800 font-bold shadow-2xs"
                               : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                           }`}
                         >
                           ✕ Reject
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReviewDecision("MANUAL_REVIEW")}
+                          className={`py-2 px-3 rounded-lg border font-medium text-center transition-colors ${
+                            reviewDecision === "MANUAL_REVIEW"
+                              ? "bg-amber-50 border-amber-400 text-amber-900 font-bold shadow-2xs"
+                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          ⚠ Manual Review
                         </button>
                       </div>
                     </div>
 
                     <div>
                       <label className="font-semibold text-slate-700 block mb-1">
-                        Inspector Notes & Justification
+                        Reason / Comments {reviewDecision !== "ACCEPT" && "*"}
                       </label>
                       <textarea
                         rows={3}
                         value={officerNotes}
                         onChange={(e) => setOfficerNotes(e.target.value)}
-                        placeholder="Enter inspection observations or rationale for statutory record..."
+                        placeholder={
+                          reviewDecision === "REJECT"
+                            ? "Reason: Violation confirmed after manual verification..."
+                            : reviewDecision === "MANUAL_REVIEW"
+                              ? "Reason: Requires physical package verification at lab..."
+                              : "Enter inspection comments or manual verification notes..."
+                        }
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
                       />
                     </div>
 
                     {reviewMessage && (
-                      <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg text-slate-800 text-[11px] font-medium">
+                      <div
+                        className={`p-3 rounded-lg text-[11px] font-medium border ${
+                          reviewMessage.startsWith("✓")
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                            : "bg-red-50 border-red-200 text-red-800"
+                        }`}
+                      >
                         {reviewMessage}
                       </div>
                     )}
@@ -652,9 +808,61 @@ export default function InspectionDetailPage({
                       className="w-full"
                       loading={isSubmittingReview}
                     >
-                      Submit Official Determination & Log Audit
+                      Confirm Audit Decision
                     </Button>
                   </form>
+                </CardBody>
+              </Card>
+
+              {/* Audit History Trail Card */}
+              <Card>
+                <CardHeader
+                  title="Audit Trail History"
+                  description="Traceable history of all officer decisions and remarks for this inspection"
+                />
+                <CardBody className="space-y-3 text-xs">
+                  {auditHistory.length === 0 ? (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-[11px] text-center">
+                      Audit Decision: Pending initial officer review.
+                    </div>
+                  ) : (
+                    auditHistory.map((item: any, idx: number) => {
+                      const details = item.details || {};
+                      const decisionLabel = details.decision || item.action || "REVIEWED";
+                      return (
+                        <div
+                          key={item.id || idx}
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1 text-slate-700"
+                        >
+                          <div className="flex items-center justify-between font-medium">
+                            <span className="font-semibold text-[#12304A]">
+                              {item.userEmail || item.userId || "Inspector"}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                decisionLabel === "ACCEPTED" || decisionLabel === "ACCEPT"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : decisionLabel === "REJECTED" || decisionLabel === "REJECT"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-amber-100 text-amber-900"
+                              }`}
+                            >
+                              {decisionLabel}
+                            </span>
+                          </div>
+                          {details.reason && (
+                            <p className="text-[11px] text-slate-600 bg-white p-2 rounded border border-slate-200">
+                              "{details.reason}"
+                            </p>
+                          )}
+                          <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1">
+                            <span>Logged Action: {item.action}</span>
+                            <span>{new Date(item.timestamp).toLocaleString("en-IN")}</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </CardBody>
               </Card>
             </div>

@@ -100,6 +100,7 @@ export const extractedFields = pgTable("extracted_fields", {
   rawText: text("raw_text"),
   confidence: numeric("confidence", { precision: 5, scale: 4 }), // 0.0000 - 1.0000
   boundingBox: jsonb("bounding_box"), // { x1, y1, x2, y2 }
+  rawData: jsonb("raw_data"),
   isPresent: boolean("is_present").notNull().default(true),
   validationStatus: varchar("validation_status", { length: 50 }).default("UNCHECKED"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

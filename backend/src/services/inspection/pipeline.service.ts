@@ -40,11 +40,13 @@ export class InspectionPipelineService {
       throw new Error("No package images found for this scan.");
     }
 
+    const totalStart = Date.now();
     console.log(
       `[OCR] Processing ${targetImages.length} package image(s) (${preprocessedImages.length} preprocessed, ${originalImages.length} original) for scan ${scan.scanNumber}`,
     );
 
     // 2. Concurrently download and OCR all relevant package images
+    const ocrStart = Date.now();
     const ocrResults = await Promise.all(
       targetImages.map(async (image, idx) => {
         console.log(
@@ -88,23 +90,31 @@ export class InspectionPipelineService {
         0,
       ),
     };
+    const ocrDurationMs = Date.now() - ocrStart;
 
     console.log(
       `[OCR] Completed OCR across all ${ocrResults.length} image(s). Combined text length: ${combinedOcrText.length} chars.`,
     );
+    console.log(`[PERF] OCR: ${ocrDurationMs} ms`);
 
     // 3. Gemini Structured Extraction (Called ONCE per inspection on combined text)
     console.log(
       `[GEMINI] Invoking Gemini structured extraction on combined package text...`,
     );
+    const geminiStart = Date.now();
     const declarations = await GeminiExtractor.extractDeclarations(ocrResult);
+    const geminiDurationMs = Date.now() - geminiStart;
+    console.log(`[PERF] Gemini: ${geminiDurationMs} ms`);
 
     // 4. Product Classification (Module 7)
     console.log(`[CLASSIFICATION] Determining commodity classification...`);
+    const classStart = Date.now();
     const classification = ProductClassifier.classify(
       declarations,
       ocrResult.rawText,
     );
+    const classDurationMs = Date.now() - classStart;
+    console.log(`[PERF] Classification: ${classDurationMs} ms`);
 
     // 5. Rule Engine & Decision Engine (Modules 8, 9, 10, 11, 12)
     console.log(
@@ -117,6 +127,7 @@ export class InspectionPipelineService {
     );
 
     // 6. Update Product Category in DB
+    const dbStart = Date.now();
     if (scan.productId) {
       await DBRepo.updateProduct(scan.productId, {
         category: classification.category,
@@ -193,15 +204,22 @@ export class InspectionPipelineService {
     );
 
     // 9. Update Scan Record with final status & score
+    const existingListingText = (scan.analysis as any)?.listingText;
     await DBRepo.updateScan(scanId, {
       status: "COMPLETED",
       complianceStatus: decision.complianceStatus,
       complianceScore: decision.complianceScore.toFixed(2),
       analysis: {
+        ...(existingListingText ? { listingText: existingListingText } : {}),
         declarations,
         ...decision,
       },
     });
+    const dbDurationMs = Date.now() - dbStart;
+    console.log(`[PERF] Persistence: ${dbDurationMs} ms`);
+
+    const totalDurationMs = Date.now() - totalStart;
+    console.log(`[PERF] TOTAL: ${totalDurationMs} ms`);
 
     console.log(
       `[ANALYSIS] Inspection complete for scan ${scan.scanNumber}. Status: ${decision.complianceStatus}, Score: ${decision.complianceScore}%`,
