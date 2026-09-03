@@ -4,31 +4,26 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
-import { Card, CardHeader, CardBody, CardFooter } from "@/components/ui/Card";
+import { Card, CardHeader, CardBody } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import {
   Upload,
   ScanSearch,
   CheckCircle2,
   AlertCircle,
-  FileText,
-  Image as ImageIcon,
-  Building2,
-  Layers,
-  Sparkles,
-  ArrowRight,
   RefreshCw,
+  XCircle,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 
-const PIPELINE_STEPS = [
-  "Image uploaded and validated",
-  "Image preprocessing (EXIF normalizer, CLAHE contrast)",
-  "Text extraction (High-DPI OCR)",
-  "Mandatory declaration structured extraction",
-  "Commodity classification (Rule applicability)",
-  "Deterministic Rule validation (Rule 6, 7, 8, 9)",
-  "RAG legal grounding & compliance scoring",
+const REAL_STAGES = [
+  { key: "UPLOADING", label: "Image upload & package validation" },
+  { key: "PREPROCESSING", label: "EXIF normalization & CLAHE contrast boost" },
+  { key: "OCR", label: "Optical character recognition (Tesseract / Cloud Vision)" },
+  { key: "EXTRACTION", label: "Gemini AI structured mandatory declaration parsing" },
+  { key: "CLASSIFICATION", label: "Commodity category & Rule 6 applicability classification" },
+  { key: "COMPLIANCE", label: "Deterministic rule engine validation & Gazette RAG grounding" },
+  { key: "SAVING", label: "Persisting statutory inspection findings & audit logs" },
 ];
 
 export default function NewInspectionPage() {
@@ -45,61 +40,34 @@ export default function NewInspectionPage() {
 
   // State
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState(-1);
+  const [activeStage, setActiveStage] = useState<string>("UPLOADING");
   const [error, setError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-
     if (files.length === 0) return;
 
     const validFiles = files.filter((file) =>
-      ["image/jpeg", "image/png", "image/webp", "image/jpg"].includes(
-        file.type,
-      ),
+      ["image/jpeg", "image/png", "image/webp", "image/jpg"].includes(file.type)
     );
 
     if (validFiles.length !== files.length) {
-      setError("Only JPG, PNG, and WebP images are allowed.");
+      setError("Only JPG, PNG, and WebP package images are allowed.");
     } else {
       setError(null);
     }
 
-    if (validFiles.length === 0) {
-      e.target.value = "";
-      return;
-    }
+    if (validFiles.length === 0) return;
 
-    const existingKeys = new Set(
-      selectedFiles.map(
-        (file) => `${file.name}-${file.size}-${file.lastModified}`,
-      ),
-    );
-
-    const newFiles = validFiles.filter(
-      (file) =>
-        !existingKeys.has(`${file.name}-${file.size}-${file.lastModified}`),
-    );
-
-    if (newFiles.length === 0) {
-      e.target.value = "";
-      return;
-    }
-
-    setSelectedFiles((previous) => [...previous, ...newFiles]);
-    setPreviewUrls((previous) => [
-      ...previous,
-      ...newFiles.map((file) => URL.createObjectURL(file)),
+    setSelectedFiles((prev) => [...prev, ...validFiles]);
+    setPreviewUrls((prev) => [
+      ...prev,
+      ...validFiles.map((file) => URL.createObjectURL(file)),
     ]);
 
-    if (!productName && newFiles[0]) {
-      setProductName(
-        newFiles[0].name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
-      );
+    if (!productName && validFiles[0]) {
+      setProductName(validFiles[0].name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "));
     }
-
-    // Allow selecting the same file again later
-    e.target.value = "";
   };
 
   const handleSampleFill = () => {
@@ -110,14 +78,10 @@ export default function NewInspectionPage() {
   };
 
   const handleRemoveFile = (index: number) => {
-    setSelectedFiles((previous) => previous.filter((_, i) => i !== index));
-
-    setPreviewUrls((previous) => {
-      const urlToRemove = previous[index];
-      if (urlToRemove) {
-        URL.revokeObjectURL(urlToRemove);
-      }
-      return previous.filter((_, i) => i !== index);
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+    setPreviewUrls((prev) => {
+      if (prev[index]) URL.revokeObjectURL(prev[index]);
+      return prev.filter((_, i) => i !== index);
     });
   };
 
@@ -127,83 +91,94 @@ export default function NewInspectionPage() {
     if (isProcessing) return;
 
     if (selectedFiles.length === 0) {
-      setError("Please select or drop a commodity package image.");
+      setError("Please select or drop at least one commodity package image.");
       return;
     }
 
+    const token = localStorage.getItem("lm_auth_token") || "dev-inspector";
+
     setError(null);
     setIsProcessing(true);
-    setCurrentStepIndex(0);
+    setActiveStage("UPLOADING");
+
+    let isPolling = true;
 
     try {
-      // Step 1: Prepare FormData with all package images
+      // Step 1: Upload images & initialize scan
       const formData = new FormData();
-      selectedFiles.forEach((file) => {
-        formData.append("files", file);
-      });
-
+      selectedFiles.forEach((file) => formData.append("files", file));
       formData.append("productName", productName || "Sample Commodity");
       formData.append("category", category);
       formData.append("brand", brand);
       formData.append("location", location);
-      if (listingText) {
-        formData.append("listingText", listingText);
-      }
+      if (listingText) formData.append("listingText", listingText);
 
-      console.log(
-        `[FRONTEND] Uploading ${selectedFiles.length} image(s) for inspection:`,
-        selectedFiles.map((f) => f.name),
-      );
-
-      // Step 2: Upload and initialize scan
-      setCurrentStepIndex(0);
       const uploadRes = await fetch(`${API_BASE_URL}/api/scans/upload`, {
         method: "POST",
-        headers: {
-          authorization: "Bearer dev-inspector",
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
       if (!uploadRes.ok) {
-        throw new Error(`Upload failed with status ${uploadRes.status}`);
+        throw new Error(`Package upload failed with status ${uploadRes.status}`);
       }
 
       const uploadData = await uploadRes.json();
       const scanId = uploadData.data.scanId;
 
-      // Advance visual pipeline progress
-      setCurrentStepIndex(1);
-      await new Promise((r) => setTimeout(r, 400));
-      setCurrentStepIndex(2);
+      const executePoll = async () => {
+        if (!isPolling) return;
+        try {
+          const pollRes = await fetch(`${API_BASE_URL}/api/scans/${scanId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (pollRes.ok) {
+            const pollJson = await pollRes.json();
+            if (pollJson.data?.scan?.currentStage) {
+              setActiveStage(pollJson.data.scan.currentStage);
+            }
+          }
+        } catch {}
+        if (isPolling) {
+          setTimeout(executePoll, 1000);
+        }
+      };
+      setTimeout(executePoll, 500);
 
-      // Step 3: Trigger backend analysis pipeline (OCR -> Gemini -> Rules -> DB)
-      const analyzeRes = await fetch(
-        `${API_BASE_URL}/api/inspections/${scanId}/analyze`,
-        {
-          method: "POST",
-          headers: {
-            authorization: "Bearer dev-inspector",
-          },
-        },
-      );
+      // Step 2: Dispatch Analysis request (OCR -> Gemini -> Classification -> Compliance -> DB)
+      const analyzeRes = await fetch(`${API_BASE_URL}/api/inspections/${scanId}/analyze`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      isPolling = false;
 
       const analyzeJson = await analyzeRes.json();
 
       if (!analyzeRes.ok || !analyzeJson.success) {
-        throw new Error(analyzeJson?.error?.message || "Analysis pipeline failed");
+        throw new Error(analyzeJson?.error?.message || "Inspection analysis failed");
       }
 
-      setCurrentStepIndex(6);
-      await new Promise((r) => setTimeout(r, 300));
-
+      setActiveStage("COMPLETED");
       router.push(`/inspections/${scanId}`);
     } catch (err: any) {
       console.error("[FRONTEND] Inspection submission error:", err);
-      setError(err.message || "Failed to process inspection");
+      setError(err.message || "Failed to process commodity inspection");
       setIsProcessing(false);
-      setCurrentStepIndex(-1);
+    } finally {
+      isPolling = false;
     }
+  };
+
+  const getStageStatus = (stageKey: string) => {
+    const stageOrder = REAL_STAGES.map((s) => s.key);
+    const currentIndex = stageOrder.indexOf(activeStage);
+    const targetIndex = stageOrder.indexOf(stageKey);
+
+    if (activeStage === "COMPLETED") return "DONE";
+    if (targetIndex < currentIndex) return "DONE";
+    if (targetIndex === currentIndex) return "PROCESSING";
+    return "PENDING";
   };
 
   return (
@@ -219,15 +194,13 @@ export default function NewInspectionPage() {
         />
 
         <main className="p-8 max-w-5xl w-full mx-auto space-y-8 flex-1">
-          {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200">
             <div>
               <h1 className="text-2xl font-bold text-[#12304A] tracking-tight">
                 Initiate New Commodity Inspection
               </h1>
               <p className="text-sm text-slate-500 mt-1">
-                Upload packaged commodity image for automated OCR declaration
-                extraction and statutory verification.
+                Upload packaged commodity images for OCR extraction, Gemini declaration parsing, and Legal Metrology rule evaluation.
               </p>
             </div>
 
@@ -243,17 +216,17 @@ export default function NewInspectionPage() {
 
           {error && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
               <span>{error}</span>
             </div>
           )}
 
           {isProcessing ? (
-            /* Progress Pipeline Screen */
+            /* Real-Time Processing Stages UI */
             <Card>
               <CardHeader
-                title="Automated Regulatory Screening in Progress"
-                description="Executing computer vision, declaration parsing, and statutory rule validation"
+                title="Automated Statutory Inspection Pipeline"
+                description="Real-time status streamed directly from backend processing execution"
               />
               <CardBody className="py-8 space-y-6">
                 <div className="flex items-center justify-center py-4">
@@ -263,28 +236,34 @@ export default function NewInspectionPage() {
                 </div>
 
                 <div className="max-w-md mx-auto space-y-3">
-                  {PIPELINE_STEPS.map((step, idx) => {
-                    const isDone = idx < currentStepIndex;
-                    const isCurrent = idx === currentStepIndex;
+                  {REAL_STAGES.map((st) => {
+                    const status = getStageStatus(st.key);
                     return (
                       <div
-                        key={idx}
+                        key={st.key}
                         className={`flex items-center gap-3 p-3 rounded-lg border text-xs transition-colors ${
-                          isDone
+                          status === "DONE"
                             ? "bg-emerald-50/60 border-emerald-200 text-emerald-800"
-                            : isCurrent
-                              ? "bg-blue-50 border-blue-300 text-blue-900 font-semibold"
-                              : "bg-slate-50 border-slate-200 text-slate-400"
+                            : status === "PROCESSING"
+                            ? "bg-blue-50 border-blue-300 text-blue-900 font-semibold shadow-xs"
+                            : "bg-slate-50 border-slate-200 text-slate-400"
                         }`}
                       >
-                        {isDone ? (
+                        {status === "DONE" ? (
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        ) : isCurrent ? (
+                        ) : status === "PROCESSING" ? (
                           <RefreshCw className="w-4 h-4 text-blue-600 shrink-0 animate-spin" />
                         ) : (
                           <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
                         )}
-                        <span>{step}</span>
+                        <div className="flex-1">
+                          <div>{st.label}</div>
+                          {status === "PROCESSING" && (
+                            <div className="text-[10px] text-blue-600 font-mono mt-0.5 uppercase tracking-wider">
+                              [Executing {st.key}]
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -295,7 +274,7 @@ export default function NewInspectionPage() {
             /* Upload & Metadata Form */
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Left: Upload Dropzone */}
+                {/* Package Images Upload */}
                 <Card>
                   <CardHeader
                     title="1. Packaging Image Upload"
@@ -350,8 +329,7 @@ export default function NewInspectionPage() {
                           </label>
 
                           <span className="text-xs text-slate-500 font-medium">
-                            {selectedFiles.length} package image
-                            {selectedFiles.length !== 1 ? "s" : ""} selected
+                            {selectedFiles.length} package image{selectedFiles.length !== 1 ? "s" : ""} selected
                           </span>
                         </div>
                       </div>
@@ -367,7 +345,7 @@ export default function NewInspectionPage() {
                           Upload Package Image(s)
                         </h4>
                         <p className="text-xs text-slate-500 mt-1 max-w-xs">
-                          Drag and drop package photo(s) or browse local files. Select multiple angles (Front, Back, Sides).
+                          Drag & drop package photos or browse local files. Select multiple angles (Front, Back, Side panel).
                         </p>
                         <span className="mt-3 px-3 py-1 bg-white border border-slate-200 rounded-md text-xs font-medium text-slate-700 shadow-2xs">
                           Browse Files
@@ -376,13 +354,13 @@ export default function NewInspectionPage() {
                     )}
 
                     <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                      ✓ Supported: JPG, PNG, WebP (max 20MB per file)
-                      <br />✓ Automatically preprocessed for glare reduction and contrast enhancement.
+                      ✓ Multiple images will be processed under <strong>ONE scan record</strong>.
+                      <br />✓ EXIF orientation normalized & CLAHE contrast boost applied automatically.
                     </div>
                   </CardBody>
                 </Card>
 
-                {/* Right: Inspection Context */}
+                {/* Inspection Context */}
                 <Card>
                   <CardHeader
                     title="2. Inspection Context & Metadata"
@@ -398,7 +376,7 @@ export default function NewInspectionPage() {
                         required
                         value={productName}
                         onChange={(e) => setProductName(e.target.value)}
-                        placeholder="e.g. Fortified Cooking Oil 1L"
+                        placeholder="e.g. Fortified Mustard Oil 1L"
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
                       />
                     </div>
@@ -413,18 +391,10 @@ export default function NewInspectionPage() {
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
                       >
                         <option value="Edible Oils">Edible Oils & Fats</option>
-                        <option value="Packaged Food">
-                          Packaged Food & Grains
-                        </option>
-                        <option value="Cosmetics & Toiletries">
-                          Cosmetics & Toiletries
-                        </option>
-                        <option value="Spices & Condiments">
-                          Spices & Condiments
-                        </option>
-                        <option value="General Commodity">
-                          General Packaged Commodity
-                        </option>
+                        <option value="Packaged Food">Packaged Food & Grains</option>
+                        <option value="Cosmetics & Toiletries">Cosmetics & Toiletries</option>
+                        <option value="Spices & Condiments">Spices & Condiments</option>
+                        <option value="General Commodity">General Packaged Commodity</option>
                       </select>
                     </div>
 
@@ -456,13 +426,13 @@ export default function NewInspectionPage() {
 
                     <div>
                       <label className="font-semibold text-slate-700 block mb-1">
-                        Optional E-Commerce Product Listing Text / URL (Task 9)
+                        Optional E-Commerce Product Listing Text / URL
                       </label>
                       <textarea
                         rows={2}
                         value={listingText}
                         onChange={(e) => setListingText(e.target.value)}
-                        placeholder="Paste online product listing text or URL to verify package vs listing consistency..."
+                        placeholder="Paste online product listing text or URL..."
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
                       />
                     </div>
@@ -473,14 +443,13 @@ export default function NewInspectionPage() {
               {/* Submit Action */}
               <div className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
                 <div className="text-xs text-slate-500">
-                  Ready to execute Legal Metrology Rules, 2011 automated
-                  compliance analysis.
+                  Ready to execute Legal Metrology Rules, 2011 automated compliance analysis.
                 </div>
                 <Button
                   type="submit"
                   variant="primary"
                   size="lg"
-                  disabled={selectedFiles.length == 0 || isProcessing}
+                  disabled={selectedFiles.length === 0 || isProcessing}
                   icon={<ScanSearch className="w-5 h-5" />}
                 >
                   Analyze Commodity Compliance

@@ -49,6 +49,99 @@ for (const r of officialLegalMetrologyRules) {
   memoryStore.rules.set(r.id, r);
 }
 
+export const SEEDED_TEST_USERS = [
+  // 3 ADMIN Users
+  {
+    id: "usr-admin-01",
+    email: "admin1@lm.gov.in",
+    name: "Dr. Rajesh Kumar",
+    role: "ADMIN",
+    department: "Legal Metrology HQ",
+    mustChangePassword: false,
+    isActive: true,
+  },
+  {
+    id: "usr-admin-02",
+    email: "admin2@lm.gov.in",
+    name: "Priya Sharma",
+    role: "ADMIN",
+    department: "Ministry of Consumer Affairs",
+    mustChangePassword: false,
+    isActive: true,
+  },
+  {
+    id: "usr-admin-03",
+    email: "admin3@lm.gov.in",
+    name: "Vikram Singh",
+    role: "ADMIN",
+    department: "Directorate General HQ",
+    mustChangePassword: false,
+    isActive: true,
+  },
+
+  // 3 INSPECTOR Users
+  {
+    id: "usr-inspector-01",
+    email: "inspector1@lm.gov.in",
+    name: "Sarthak Verma",
+    role: "INSPECTOR",
+    department: "Zonal Enforcement Branch",
+    mustChangePassword: false,
+    isActive: true,
+  },
+  {
+    id: "usr-inspector-02",
+    email: "inspector2@lm.gov.in",
+    name: "Ananya Patel",
+    role: "INSPECTOR",
+    department: "Western Zone Inspection Wing",
+    mustChangePassword: false,
+    isActive: true,
+  },
+  {
+    id: "usr-inspector-03",
+    email: "inspector3@lm.gov.in",
+    name: "Rahul Deshmukh",
+    role: "INSPECTOR",
+    department: "Southern Regional Inspectorate",
+    mustChangePassword: false,
+    isActive: true,
+  },
+
+  // 3 SUPERVISOR Users
+  {
+    id: "usr-supervisor-01",
+    email: "supervisor1@lm.gov.in",
+    name: "Anita Rao",
+    role: "SUPERVISOR",
+    department: "Regional Directorate",
+    mustChangePassword: false,
+    isActive: true,
+  },
+  {
+    id: "usr-supervisor-02",
+    email: "supervisor2@lm.gov.in",
+    name: "Suresh Mehta",
+    role: "SUPERVISOR",
+    department: "Central Enforcement Division",
+    mustChangePassword: false,
+    isActive: true,
+  },
+  {
+    id: "usr-supervisor-03",
+    email: "supervisor3@lm.gov.in",
+    name: "Meenakshi Sundaram",
+    role: "SUPERVISOR",
+    department: "State Quality Control Cell",
+    mustChangePassword: false,
+    isActive: true,
+  },
+];
+
+for (const u of SEEDED_TEST_USERS) {
+  memoryStore.users.set(u.id, { ...u, createdAt: new Date(), updatedAt: new Date() });
+}
+
 export class DBRepo {
   static async getScanComplianceChecks(scanId: string) {
     if (await isDatabaseLive()) {
@@ -113,16 +206,7 @@ export class DBRepo {
     }
   }
 
-  static async getUserByEmail(email: string) {
-    if (await isDatabaseLive()) {
-      try {
-        const [user] = await db.select().from(users).where(eq(users.email, email));
-        if (user) return user;
-      } catch {}
-    }
 
-    return Array.from(memoryStore.users.values()).find((u) => u.email === email) || null;
-  }
 
   static async getProduct(id: string) {
     if (await isDatabaseLive()) {
@@ -281,7 +365,18 @@ export class DBRepo {
     if (await isDatabaseLive()) {
       try {
         const list = await db
-          .select()
+          .select({
+            id: extractedFields.id,
+            scanId: extractedFields.scanId,
+            fieldName: extractedFields.fieldName,
+            fieldValue: extractedFields.fieldValue,
+            rawText: extractedFields.rawText,
+            confidence: extractedFields.confidence,
+            boundingBox: extractedFields.boundingBox,
+            isPresent: extractedFields.isPresent,
+            validationStatus: extractedFields.validationStatus,
+            createdAt: extractedFields.createdAt,
+          })
           .from(extractedFields)
           .where(eq(extractedFields.scanId, scanId));
         if (list.length > 0) return list;
@@ -466,30 +561,81 @@ export class DBRepo {
       try {
         const list = await db.select().from(users);
         if (list.length > 0) return list;
-      } catch {}
+      } catch (err: any) {
+        console.error("[DATABASE] Error fetching users:", err.message);
+      }
     }
-    return [
-      {
-        id: "usr-01",
-        name: "Sarthak Verma",
-        email: "sarthak.verma@lm.gov.in",
-        role: "INSPECTOR",
-        department: "Zonal Enforcement",
-      },
-      {
-        id: "usr-02",
-        name: "Anita Rao",
-        email: "anita.rao@lm.gov.in",
-        role: "SUPERVISOR",
-        department: "Regional Directorate",
-      },
-      {
-        id: "usr-03",
-        name: "Dr. Rajesh Kumar",
-        email: "rajesh.kumar@lm.gov.in",
-        role: "ADMIN",
-        department: "Legal Metrology HQ",
-      },
-    ];
+    return Array.from(memoryStore.users.values());
+  }
+
+  static async getUserByEmail(email: string) {
+    if (await isDatabaseLive()) {
+      try {
+        const [found] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+        if (found) return found;
+      } catch (err: any) {
+        console.error("[DATABASE] Error finding user by email:", err.message);
+      }
+    }
+    return Array.from(memoryStore.users.values()).find(
+      (u) => u.email.toLowerCase() === email.toLowerCase()
+    );
+  }
+
+  static async getUserById(id: string) {
+    if (await isDatabaseLive()) {
+      try {
+        const [found] = await db.select().from(users).where(eq(users.id, id));
+        if (found) return found;
+      } catch (err: any) {
+        console.error("[DATABASE] Error finding user by id:", err.message);
+      }
+    }
+    return memoryStore.users.get(id);
+  }
+
+  static async insertUser(userData: any) {
+    const id = userData.id || crypto.randomUUID();
+    const record = {
+      id,
+      email: userData.email.toLowerCase(),
+      name: userData.name,
+      role: userData.role || "INSPECTOR",
+      department: userData.department || "Legal Metrology Enforcement",
+      mustChangePassword: userData.mustChangePassword ?? false,
+      isActive: userData.isActive ?? true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    if (await isDatabaseLive()) {
+      try {
+        const [created] = await db.insert(users).values(record).returning();
+        if (created) return created;
+      } catch (err: any) {
+        console.error("[DATABASE] Error inserting user:", err.message);
+      }
+    }
+    memoryStore.users.set(id, record);
+    return record;
+  }
+
+  static async updateUser(id: string, updates: any) {
+    if (await isDatabaseLive()) {
+      try {
+        const [updated] = await db
+          .update(users)
+          .set({ ...updates, updatedAt: new Date() })
+          .where(eq(users.id, id))
+          .returning();
+        if (updated) return updated;
+      } catch (err: any) {
+        console.error("[DATABASE] Error updating user:", err.message);
+      }
+    }
+    const existing = memoryStore.users.get(id) || {};
+    const updatedRecord = { ...existing, ...updates, updatedAt: new Date() };
+    memoryStore.users.set(id, updatedRecord);
+    return updatedRecord;
   }
 }

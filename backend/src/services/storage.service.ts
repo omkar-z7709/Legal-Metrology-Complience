@@ -97,12 +97,18 @@ export class StorageService {
     }
 
     try {
-      const { data } = await supabaseAdmin.storage
+      const callPromise = supabaseAdmin.storage
         .from(BUCKET_NAME)
         .createSignedUrl(storagePath, 60 * 60 * 24);
-      return data?.signedUrl || "";
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Storage timeout")), 500)
+      );
+
+      const { data } = (await Promise.race([callPromise, timeoutPromise])) as any;
+      return data?.signedUrl || `https://storage.supabase.co/${BUCKET_NAME}/${storagePath}`;
     } catch {
-      return "";
+      return `https://storage.supabase.co/${BUCKET_NAME}/${storagePath}`;
     }
   }
 

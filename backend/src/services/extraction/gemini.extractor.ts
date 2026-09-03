@@ -217,7 +217,7 @@ Extract the declarations from this OCR text.
 Follow the exact JSON structure and extraction rules provided in the system instruction.
 `;
       const modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-      const maxRetries = 2;
+      const maxRetries = 1;
       let attempt = 0;
       let response: any = null;
 
@@ -234,7 +234,7 @@ Follow the exact JSON structure and extraction rules provided in the system inst
               },
             });
 
-            const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 25000);
+            const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 6000);
             const timeoutPromise = new Promise((_, reject) =>
               setTimeout(
                 () => reject(new Error(`Gemini request timeout after ${timeoutMs}ms`)),
@@ -250,10 +250,12 @@ Follow the exact JSON structure and extraction rules provided in the system inst
             const message = err.message || "Unknown Gemini API error";
             console.warn(`[GEMINI] API FAILED status: ${status} message: ${message}`);
 
-            const isRetryable = (status === 429 || status >= 500 || message.includes("timeout")) && attempt < maxRetries;
+            const isFetchFailed = message.includes("fetch failed");
+            const isRetryable = !isFetchFailed && (status === 429 || status >= 500 || message.includes("timeout")) && attempt < maxRetries;
+
             if (isRetryable) {
               attempt++;
-              const backoffMs = attempt * 1000;
+              const backoffMs = attempt * 500;
               console.log(`[GEMINI] Retrying request in ${backoffMs}ms...`);
               await new Promise((r) => setTimeout(r, backoffMs));
             } else {

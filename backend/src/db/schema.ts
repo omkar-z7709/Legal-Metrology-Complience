@@ -41,6 +41,8 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 255 }).notNull(),
   role: varchar("role", { length: 50 }).notNull().default("INSPECTOR"), // 'INSPECTOR' | 'SUPERVISOR' | 'ADMIN'
   department: varchar("department", { length: 255 }).default("Legal Metrology Enforcement"),
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -66,6 +68,7 @@ export const scans = pgTable("scans", {
   scanNumber: varchar("scan_number", { length: 100 }).notNull().unique(),
   location: varchar("location", { length: 255 }),
   status: varchar("status", { length: 50 }).notNull().default("PENDING"),
+  currentStage: varchar("current_stage", { length: 50 }).default("COMPLETED"),
   complianceStatus: varchar("compliance_status", { length: 50 }).default("REQUIRES_REVIEW"),
   complianceScore: numeric("compliance_score", { precision: 5, scale: 2 }).default("0.00"),
   analysis: jsonb("analysis"),

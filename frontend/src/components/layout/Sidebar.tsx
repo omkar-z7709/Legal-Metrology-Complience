@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   ScanSearch,
@@ -16,7 +16,7 @@ import {
   Settings,
   Shield,
   LogOut,
-  ChevronRight,
+  KeyRound,
 } from "lucide-react";
 
 interface NavItem {
@@ -28,6 +28,23 @@ interface NavItem {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("lm_auth_user");
+    if (stored) {
+      try {
+        setCurrentUser(JSON.parse(stored));
+      } catch {}
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem("lm_auth_token");
+    localStorage.removeItem("lm_auth_user");
+    router.push("/login");
+  };
 
   const mainNav: NavItem[] = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -83,6 +100,15 @@ export function Sidebar() {
     </div>
   );
 
+  const officerName = currentUser?.name || "Enforcement Officer";
+  const officerRole = currentUser?.role || "INSPECTOR";
+  const initials = officerName
+    .split(" ")
+    .map((n: string) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 min-h-screen">
       {/* Top Section */}
@@ -111,27 +137,38 @@ export function Sidebar() {
       </div>
 
       {/* Bottom User Profile Section */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/70">
+      <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2">
         <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#12304A] text-white flex items-center justify-center text-xs font-bold">
-              SV
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-8 h-8 rounded-full bg-[#12304A] text-white flex items-center justify-center text-xs font-bold shrink-0">
+              {initials}
             </div>
-            <div className="text-left">
-              <div className="text-xs font-semibold text-slate-900 leading-tight">
-                Sarthak Verma
+            <div className="text-left overflow-hidden">
+              <div className="text-xs font-semibold text-slate-900 leading-tight truncate">
+                {officerName}
               </div>
-              <div className="text-[10px] font-medium text-slate-500">
-                INSPECTOR • Dept. of LM
+              <div className="text-[10px] font-medium text-slate-500 truncate">
+                {officerRole} • Dept. of LM
               </div>
             </div>
           </div>
-          <button
-            title="Sign out"
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md transition-colors"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-          </button>
+
+          <div className="flex items-center gap-1">
+            <Link
+              href="/change-password"
+              title="Change Password"
+              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md transition-colors"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </Link>
+            <button
+              onClick={handleLogout}
+              title="Sign out"
+              className="p-1.5 text-slate-400 hover:text-red-600 rounded-md transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

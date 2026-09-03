@@ -19,11 +19,23 @@ export class InspectionPipelineService {
   static async processScan(
     scanId: string,
   ): Promise<ComplianceDecision & { scanId: string; scanNumber: string }> {
-    console.log(`[ANALYSIS] Starting inspection pipeline for scanId: ${scanId}`);
+    console.log(`[PIPELINE] START scanId=${scanId}`);
 
     // 1. Fetch Scan & Images
     const scan = await DBRepo.getScan(scanId);
     if (!scan) throw new Error(`Scan with ID '${scanId}' not found.`);
+
+    // Idempotency check: if scan is already COMPLETED with valid analysis, return persisted analysis immediately
+    if (scan.status === "COMPLETED" && scan.analysis && (scan.analysis as any).declarations) {
+      console.log(`[PIPELINE] Idempotent hit: Scan ${scan.scanNumber} is already COMPLETED. Returning persisted analysis.`);
+      return {
+        scanId: scan.id,
+        scanNumber: scan.scanNumber,
+        ...(scan.analysis as any),
+      };
+    }
+
+    await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "PREPROCESSING" });
 
     const scanImages = await DBRepo.getScanImages(scanId);
     const preprocessedImages = scanImages.filter(
@@ -37,6 +49,7 @@ export class InspectionPipelineService {
       preprocessedImages.length > 0 ? preprocessedImages : originalImages;
 
     if (targetImages.length === 0) {
+      await DBRepo.updateScan(scanId, { status: "FAILED", currentStage: "FAILED" });
       throw new Error("No package images found for this scan.");
     }
 
@@ -45,7 +58,8 @@ export class InspectionPipelineService {
       `[OCR] Processing ${targetImages.length} package image(s) (${preprocessedImages.length} preprocessed, ${originalImages.length} original) for scan ${scan.scanNumber}`,
     );
 
-    // 2. Concurrently download and OCR all relevant package images
+    // 2. OCR Stage
+    await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "OCR" });
     const ocrStart = Date.now();
     const ocrResults = await Promise.all(
       targetImages.map(async (image, idx) => {
@@ -97,7 +111,8 @@ export class InspectionPipelineService {
     );
     console.log(`[PERF] OCR: ${ocrDurationMs} ms`);
 
-    // 3. Gemini Structured Extraction (Called ONCE per inspection on combined text)
+    // 3. Gemini Structured Extraction Stage
+    await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "EXTRACTION" });
     console.log(
       `[GEMINI] Invoking Gemini structured extraction on combined package text...`,
     );
@@ -106,7 +121,8 @@ export class InspectionPipelineService {
     const geminiDurationMs = Date.now() - geminiStart;
     console.log(`[PERF] Gemini: ${geminiDurationMs} ms`);
 
-    // 4. Product Classification (Module 7)
+    // 4. Product Classification Stage
+    await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "CLASSIFICATION" });
     console.log(`[CLASSIFICATION] Determining commodity classification...`);
     const classStart = Date.now();
     const classification = ProductClassifier.classify(
@@ -116,7 +132,8 @@ export class InspectionPipelineService {
     const classDurationMs = Date.now() - classStart;
     console.log(`[PERF] Classification: ${classDurationMs} ms`);
 
-    // 5. Rule Engine & Decision Engine (Modules 8, 9, 10, 11, 12)
+    // 5. Compliance & RAG Stage
+    await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "COMPLIANCE" });
     console.log(
       `[COMPLIANCE] Executing deterministic rule validation and RAG grounding for '${classification.category}'...`,
     );
@@ -128,6 +145,7 @@ export class InspectionPipelineService {
 
     // 6. Update Product Category in DB
     const dbStart = Date.now();
+    await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "SAVING" });
     if (scan.productId) {
       await DBRepo.updateProduct(scan.productId, {
         category: classification.category,
@@ -207,6 +225,7 @@ export class InspectionPipelineService {
     const existingListingText = (scan.analysis as any)?.listingText;
     await DBRepo.updateScan(scanId, {
       status: "COMPLETED",
+      currentStage: "COMPLETED",
       complianceStatus: decision.complianceStatus,
       complianceScore: decision.complianceScore.toFixed(2),
       analysis: {
