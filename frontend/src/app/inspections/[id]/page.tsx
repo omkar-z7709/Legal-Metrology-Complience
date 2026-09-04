@@ -28,6 +28,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import Link from "next/link";
 
 export default function InspectionDetailPage({
   params,
@@ -217,6 +218,37 @@ export default function InspectionDetailPage({
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex min-h-screen bg-[#F8FAFC]">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="max-w-md w-full text-center bg-white rounded-xl border border-red-200 p-8 space-y-4 shadow-sm">
+            <div className="w-12 h-12 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">
+                Inspection Record Unavailable
+              </h2>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                {error} This record may have been removed or lost after a
+                backend restart. Re-upload the package image to restore it, or
+                return to the registry.
+              </p>
+            </div>
+            <Link
+              href="/inspections"
+              className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold text-white bg-[#12304A] hover:bg-[#1a4268] rounded-lg transition-colors"
+            >
+              ← Return to Inspection Registry
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const analysis = scanData?.analysis;
   const scan = scanData?.scan;
   const originalImages =
@@ -361,6 +393,10 @@ export default function InspectionDetailPage({
                           <img
                             src={image.url}
                             alt={`Package evidence ${index + 1}`}
+                            loading="lazy"
+                            decoding="async"
+                            width={800}
+                            height={600}
                             className="w-full h-64 object-contain bg-slate-100"
                           />
 
@@ -471,6 +507,26 @@ export default function InspectionDetailPage({
                       {Math.round(
                         (analysis?.declarations?.date_of_manufacture
                           ?.confidence ?? 0) * 100,
+                      )}
+                      %
+                    </span>
+                  </div>
+
+                  <div className="p-4 flex items-center justify-between hover:bg-slate-50">
+                    <div className="space-y-0.5">
+                      <div className="font-semibold text-slate-800">
+                        Date of Expiry (Rule 6(1)(d))
+                      </div>
+                      <div className="text-slate-500">
+                        {analysis?.declarations?.date_of_expiry?.value ??
+                          "Not detected"}
+                      </div>
+                    </div>
+                    <span className="font-mono px-2 py-0.5 bg-slate-100 rounded text-slate-700">
+                      Conf:{" "}
+                      {Math.round(
+                        (analysis?.declarations?.date_of_expiry?.confidence ??
+                          0) * 100,
                       )}
                       %
                     </span>

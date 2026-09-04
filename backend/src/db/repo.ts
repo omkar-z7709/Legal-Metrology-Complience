@@ -11,14 +11,21 @@ import {
   rules,
   users,
 } from "./schema.js";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { officialLegalMetrologyRules } from "./seed.js";
 import crypto from "crypto";
+import fs from "fs/promises";
+import path from "path";
 
 // Cached connection flag: if postgres is unreachable, immediately use memory store without blocking
 let isLiveDbReachable: boolean | null = null;
 
+// Begin hydrating the durable fallback store immediately. Awaited on first DB
+// access so restarts never serve stale reads (CJS/ESM-safe, no top-level await).
+const hydrationReady = hydrateMemoryStore();
+
 async function isDatabaseLive(): Promise<boolean> {
+  await hydrationReady;
   if (isLiveDbReachable !== null) return isLiveDbReachable;
   const status = await checkPostgresConnection();
   isLiveDbReachable = status.connected;
@@ -142,16 +149,139 @@ for (const u of SEEDED_TEST_USERS) {
   memoryStore.users.set(u.id, { ...u, createdAt: new Date(), updatedAt: new Date() });
 }
 
+// ==== Durable Fallback Store (survives process restarts / dev hot-reloads) ====
+// The in-memory store silently loses scans on every restart when Postgres is
+// unreachable, which 404s the frontend on stale inspection links. Persist a
+// JSON snapshot so fallback data survives restarts. `uploads/` is gitignored.
+const MEMORY_STORE_FILE = path.resolve(
+  process.cwd(),
+  "uploads",
+  ".memory-store.json",
+);
+const DATE_FIELDS = new Set([
+  "createdAt",
+  "updatedAt",
+  "generatedAt",
+  "timestamp",
+  "reviewedAt",
+  "expiresAt",
+]);
+
+let persistTimer: NodeJS.Timeout | null = null;
+
+function dateReviver(key: string, value: any) {
+  if (DATE_FIELDS.has(key) && typeof value === "string") {
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return value;
+}
+
+async function hydrateMemoryStore() {
+  try {
+    const raw = await fs.readFile(MEMORY_STORE_FILE, "utf-8");
+    const parsed = JSON.parse(raw, dateReviver);
+    if (!parsed || typeof parsed !== "object") return;
+
+    let restored = 0;
+    for (const [key, entries] of Object.entries(parsed)) {
+      const target = (memoryStore as any)[key];
+      if (!(target instanceof Map) || !entries) continue;
+      for (const [id, value] of Object.entries(entries as any)) {
+        target.set(id, value);
+        restored++;
+      }
+    }
+    if (restored > 0) {
+      console.log(
+        `[DATABASE] Restored ${restored} record(s) from persistent fallback store.`,
+      );
+    }
+  } catch {
+    // No snapshot yet (first boot) or unreadable file - start fresh.
+  }
+}
+
+function schedulePersist() {
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    void (async () => {
+      try {
+        const data: Record<string, Record<string, any>> = {};
+        for (const [key, map] of Object.entries(memoryStore)) {
+          data[key] = Object.fromEntries(map as Map<string, any>);
+        }
+        await fs.mkdir(path.dirname(MEMORY_STORE_FILE), { recursive: true });
+        await fs.writeFile(
+          MEMORY_STORE_FILE,
+          JSON.stringify(data, null, 2),
+          "utf-8",
+        );
+      } catch (err: any) {
+        console.warn(
+          `[DATABASE] Failed to persist fallback store: ${err.message}`,
+        );
+      }
+    })();
+  }, 300);
+}
+
+// ---- Read-through memoization cache (5s TTL, invalidated on writes) ----
+const READ_CACHE_TTL = 5000;
+const readCache = new Map<string, { value: unknown; expiresAt: number }>();
+
+function readCacheGet<T>(key: string): T | undefined {
+  const entry = readCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) {
+    readCache.delete(key);
+    return undefined;
+  }
+  return entry.value as T;
+}
+
+function readCacheSet(key: string, value: unknown) {
+  readCache.set(key, { value, expiresAt: Date.now() + READ_CACHE_TTL });
+  if (readCache.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of readCache) {
+      if (now > v.expiresAt) readCache.delete(k);
+    }
+  }
+}
+
+function readCacheInvalidate(prefix: string) {
+  for (const k of readCache.keys()) {
+    if (k.startsWith(prefix)) readCache.delete(k);
+  }
+}
+
+// Rule ids already known to exist in the `rules` table. Avoids a redundant
+// `INSERT ... ON CONFLICT DO NOTHING` per inserted compliance check/violation.
+const knownRuleIds = new Set<string>();
+
+const scanCacheKey = (id: string) => `scan:${id}`;
+const scansListKey = "scans:all";
+const productCacheKey = (id: string) => `product:${id}`;
+const productsListKey = "products:all";
+
 export class DBRepo {
   static async getScanComplianceChecks(scanId: string) {
     if (await isDatabaseLive()) {
       try {
+        const key = `cc-scan:${scanId}`;
+        const cached = readCacheGet<any[]>(key);
+        if (cached) return cached;
         const list = await db
           .select()
           .from(complianceChecks)
           .where(eq(complianceChecks.scanId, scanId));
 
-        if (list.length > 0) return list;
+        if (list.length > 0) {
+          readCacheSet(key, list);
+          return list;
+        }
       } catch (err: any) {
         console.error("[DATABASE] Error fetching scan compliance checks:", err.message);
       }
@@ -187,6 +317,8 @@ export class DBRepo {
       updatedAt: new Date(),
     };
     memoryStore.products.set(id, record);
+    schedulePersist();
+    readCacheInvalidate(productsListKey);
     return record;
   }
 
@@ -204,18 +336,25 @@ export class DBRepo {
         updatedAt: new Date(),
       });
     }
+    readCacheInvalidate(productCacheKey(id));
+    schedulePersist();
   }
 
 
 
   static async getProduct(id: string) {
+    const cached = readCacheGet<any>(productCacheKey(id));
+    if (cached) return cached;
     if (await isDatabaseLive()) {
       try {
         const [product] = await db
           .select()
           .from(products)
           .where(eq(products.id, id));
-        if (product) return product;
+        if (product) {
+          readCacheSet(productCacheKey(id), product);
+          return product;
+        }
       } catch {}
     }
     return memoryStore.products.get(id) || null;
@@ -233,7 +372,10 @@ export class DBRepo {
     if (await isDatabaseLive()) {
       try {
         const [created] = await db.insert(scans).values(data).returning();
-        if (created) return created;
+        if (created) {
+          readCacheInvalidate(scansListKey);
+          return created;
+        }
       } catch (error: any) {
         console.error("[DB] Failed to insert scan in Postgres:", error.message);
       }
@@ -248,6 +390,8 @@ export class DBRepo {
       updatedAt: new Date(),
     };
     memoryStore.scans.set(id, record);
+    readCacheInvalidate(scansListKey);
+    schedulePersist();
     return record;
   }
 
@@ -259,7 +403,11 @@ export class DBRepo {
           .set(data)
           .where(eq(scans.id, id))
           .returning();
-        if (updated) return updated;
+        if (updated) {
+          readCacheInvalidate(scanCacheKey(id));
+          readCacheInvalidate(scansListKey);
+          return updated;
+        }
       } catch {}
     }
 
@@ -267,34 +415,135 @@ export class DBRepo {
     if (existing) {
       const updated = { ...existing, ...data, updatedAt: new Date() };
       memoryStore.scans.set(id, updated);
+      readCacheInvalidate(scanCacheKey(id));
+      readCacheInvalidate(scansListKey);
+      schedulePersist();
       return updated;
     }
     return null;
   }
 
   static async getScan(id: string) {
+    const cached = readCacheGet<any>(scanCacheKey(id));
+    if (cached) return cached;
     if (await isDatabaseLive()) {
       try {
         const [scan] = await db.select().from(scans).where(eq(scans.id, id));
-        if (scan) return scan;
+        if (scan) {
+          readCacheSet(scanCacheKey(id), scan);
+          return scan;
+        }
       } catch {}
     }
     return memoryStore.scans.get(id) || null;
   }
 
   static async getAllScans() {
+    const cached = readCacheGet<any[]>(scansListKey);
+    if (cached) return cached;
     if (await isDatabaseLive()) {
       try {
         const all = await db
-          .select()
+          .select({
+            id: scans.id,
+            productId: scans.productId,
+            inspectorId: scans.inspectorId,
+            scanNumber: scans.scanNumber,
+            location: scans.location,
+            status: scans.status,
+            complianceStatus: scans.complianceStatus,
+            complianceScore: scans.complianceScore,
+            reviewStatus: scans.reviewStatus,
+            reviewerNotes: scans.reviewerNotes,
+            reviewedBy: scans.reviewedBy,
+            reviewedAt: scans.reviewedAt,
+            createdAt: scans.createdAt,
+            updatedAt: scans.updatedAt,
+          })
           .from(scans)
           .orderBy(desc(scans.createdAt));
-        if (all.length > 0) return all;
+        if (all.length > 0) {
+          readCacheSet(scansListKey, all);
+          return all;
+        }
       } catch {}
     }
     return Array.from(memoryStore.scans.values()).sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
     );
+  }
+
+  static async getScanStats(): Promise<{
+    totalInspections: number;
+    compliant: number;
+    nonCompliant: number;
+    requiresReview: number;
+    averageComplianceScore: number;
+  }> {
+    if (await isDatabaseLive()) {
+      try {
+        const res: any[] = await db.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE compliance_status = 'COMPLIANT')::int AS compliant,
+            COUNT(*) FILTER (WHERE compliance_status = 'NON_COMPLIANT')::int AS non_compliant,
+            COUNT(*) FILTER (WHERE compliance_status = 'REQUIRES_REVIEW')::int AS requires_review,
+            COALESCE(ROUND(AVG(compliance_score)), 0)::int AS avg_score
+          FROM scans
+        `);
+        const r = res[0];
+        if (r) {
+          return {
+            totalInspections: Number(r.total) || 0,
+            compliant: Number(r.compliant) || 0,
+            nonCompliant: Number(r.non_compliant) || 0,
+            requiresReview: Number(r.requires_review) || 0,
+            averageComplianceScore: Number(r.avg_score) || 0,
+          };
+        }
+      } catch {}
+    }
+    // Memory fallback: aggregate directly from the store
+    const all = Array.from(memoryStore.scans.values());
+    const compliant = all.filter((s) => s.complianceStatus === "COMPLIANT").length;
+    const nonCompliant = all.filter((s) => s.complianceStatus === "NON_COMPLIANT").length;
+    const requiresReview = all.filter((s) => s.complianceStatus === "REQUIRES_REVIEW").length;
+    const sum = all.reduce(
+      (acc, s) => acc + (parseFloat(s.complianceScore || "0") || 0),
+      0,
+    );
+    return {
+      totalInspections: all.length,
+      compliant,
+      nonCompliant,
+      requiresReview,
+      averageComplianceScore: all.length > 0 ? Math.round(sum / all.length) : 0,
+    };
+  }
+
+  static async getRecentScans(limit = 10) {
+    if (await isDatabaseLive()) {
+      try {
+        const list = await db
+          .select({
+            id: scans.id,
+            productId: scans.productId,
+            scanNumber: scans.scanNumber,
+            location: scans.location,
+            status: scans.status,
+            complianceStatus: scans.complianceStatus,
+            complianceScore: scans.complianceScore,
+            createdAt: scans.createdAt,
+          })
+          .from(scans)
+          .orderBy(desc(scans.createdAt))
+          .limit(limit);
+        if (list.length > 0) return list;
+      } catch {}
+    }
+    return Array.from(memoryStore.scans.values())
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
   }
 
   static async getProductScans(productId: string) {
@@ -330,6 +579,7 @@ export class DBRepo {
       createdAt: new Date(),
     };
     memoryStore.images.set(id, record);
+    schedulePersist();
     return record;
   }
 
@@ -359,6 +609,7 @@ export class DBRepo {
       }
     }
     memoryStore.extractedFields.set(id, { id, ...data, createdAt: new Date() });
+    schedulePersist();
   }
 
   static async getScanExtractedFields(scanId: string) {
@@ -393,7 +644,7 @@ export class DBRepo {
     const id = crypto.randomUUID();
     if (await isDatabaseLive()) {
       try {
-        if (data.ruleId) {
+        if (data.ruleId && !knownRuleIds.has(data.ruleId)) {
           try {
             await db.insert(rules).values({
               id: data.ruleId,
@@ -404,6 +655,7 @@ export class DBRepo {
               requirement: data.reason || "Statutory Requirement",
               validationType: "PRESENCE",
             }).onConflictDoNothing();
+            knownRuleIds.add(data.ruleId);
           } catch {}
         }
         const [created] = await db
@@ -417,6 +669,7 @@ export class DBRepo {
     }
     const record = { id, ...data, createdAt: new Date() };
     memoryStore.complianceChecks.set(id, record);
+    schedulePersist();
     return record;
   }
 
@@ -424,7 +677,7 @@ export class DBRepo {
     const id = crypto.randomUUID();
     if (await isDatabaseLive()) {
       try {
-        if (data.ruleId) {
+        if (data.ruleId && !knownRuleIds.has(data.ruleId)) {
           try {
             await db.insert(rules).values({
               id: data.ruleId,
@@ -435,6 +688,7 @@ export class DBRepo {
               requirement: "Statutory Requirement",
               validationType: "PRESENCE",
             }).onConflictDoNothing();
+            knownRuleIds.add(data.ruleId);
           } catch {}
         }
         await db.insert(violations).values({ id, ...data });
@@ -443,6 +697,7 @@ export class DBRepo {
       }
     }
     memoryStore.violations.set(id, { id, ...data, createdAt: new Date() });
+    schedulePersist();
   }
 
   static async getScanViolations(scanId: string) {
@@ -506,6 +761,7 @@ export class DBRepo {
     }
     const record = { id, ...data, generatedAt: new Date() };
     memoryStore.reports.set(id, record);
+    schedulePersist();
     return record;
   }
 
@@ -519,6 +775,7 @@ export class DBRepo {
       }
     }
     memoryStore.auditLogs.set(id, { id, ...data, timestamp: new Date() });
+    schedulePersist();
   }
 
   static async getAllAuditLogs() {
@@ -617,6 +874,7 @@ export class DBRepo {
       }
     }
     memoryStore.users.set(id, record);
+    schedulePersist();
     return record;
   }
 
@@ -636,6 +894,7 @@ export class DBRepo {
     const existing = memoryStore.users.get(id) || {};
     const updatedRecord = { ...existing, ...updates, updatedAt: new Date() };
     memoryStore.users.set(id, updatedRecord);
+    schedulePersist();
     return updatedRecord;
   }
 }

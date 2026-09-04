@@ -1,9 +1,20 @@
 import { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { checkSupabaseConnection } from "../db/supabase.js";
 
+// Throttle the external Supabase liveness check so frequent health pings don't
+// each pay a network round-trip.
+let cachedStatus: Awaited<ReturnType<typeof checkSupabaseConnection>> | null = null;
+let lastCheckedAt = 0;
+const HEALTH_CACHE_MS = 10_000;
+
 export const healthRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   fastify.get("/health", async (request, reply) => {
-    const dbStatus = await checkSupabaseConnection();
+    const now = Date.now();
+    if (!cachedStatus || now - lastCheckedAt > HEALTH_CACHE_MS) {
+      cachedStatus = await checkSupabaseConnection();
+      lastCheckedAt = now;
+    }
+    const dbStatus = cachedStatus;
 
     const isHealthy = dbStatus.connected;
     const responsePayload = {

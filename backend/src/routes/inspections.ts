@@ -226,14 +226,17 @@ export const inspectionRoutes: FastifyPluginAsync = async (fastify: FastifyInsta
 
   // 4. Live Enforcement Dashboard Statistics (Module 15 & Task 7)
   fastify.get("/dashboard/stats", { preHandler: [authenticate] }, async (request, reply) => {
-    const allScans = await DBRepo.getAllScans();
-    const totalInspections = allScans.length;
-    const compliant = allScans.filter((s) => s.complianceStatus === "COMPLIANT").length;
-    const nonCompliant = allScans.filter((s) => s.complianceStatus === "NON_COMPLIANT").length;
-    const requiresReview = allScans.filter((s) => s.complianceStatus === "REQUIRES_REVIEW").length;
+    // Aggregate in SQL instead of shipping every scan (incl. heavy analysis jsonb) to JS
+    const [stats, recentInspections] = await Promise.all([
+      DBRepo.getScanStats(),
+      DBRepo.getRecentScans(10),
+    ]);
 
-    const totalScoresSum = allScans.reduce((sum, s) => sum + (parseFloat(s.complianceScore || "0") || 0), 0);
-    const averageComplianceScore = totalInspections > 0 ? Math.round(totalScoresSum / totalInspections) : 0;
+    const totalInspections = stats.totalInspections;
+    const compliant = stats.compliant;
+    const nonCompliant = stats.nonCompliant;
+    const requiresReview = stats.requiresReview;
+    const averageComplianceScore = stats.averageComplianceScore;
     const complianceRatePercentage = totalInspections > 0 ? Math.round((compliant / totalInspections) * 100) : 0;
 
     const allViolations = await DBRepo.getAllViolations();
@@ -264,16 +267,6 @@ export const inspectionRoutes: FastifyPluginAsync = async (fastify: FastifyInsta
       else if (type.includes("PLACE")) categoriesCount.PLACEMENT++;
       else if (type.includes("MISSING") || type.includes("ABSENT")) categoriesCount.MISSING_DECLARATION++;
       else categoriesCount.NON_STANDARD_DECLARATION++;
-    });
-
-    const recentInspections = allScans.slice(0, 10);
-
-    // Products with repeated violations
-    const productViolationMap = new Map<string, number>();
-    allViolations.forEach((v) => {
-      if (v.scanId) {
-        productViolationMap.set(v.scanId, (productViolationMap.get(v.scanId) || 0) + 1);
-      }
     });
 
     return reply.status(200).send({

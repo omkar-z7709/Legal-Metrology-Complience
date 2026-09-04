@@ -85,15 +85,10 @@ export class StorageService {
     contentType = "image/jpeg",
   ): Promise<string> {
     if (storagePath.startsWith("local://")) {
+      // Return a cacheable file URL instead of base64-encoding the whole file
+      // into the JSON payload. The route builds an absolute URL.
       const fileName = storagePath.replace("local://", "");
-      try {
-        const fileBuffer = await fs.readFile(
-          path.join(LOCAL_STORAGE_DIR, fileName),
-        );
-        return `data:${contentType};base64,${fileBuffer.toString("base64")}`;
-      } catch {
-        return "";
-      }
+      return `/files/${encodeURIComponent(fileName)}`;
     }
 
     try {

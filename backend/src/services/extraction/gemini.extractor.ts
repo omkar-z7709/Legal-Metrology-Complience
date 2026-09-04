@@ -58,6 +58,17 @@ DATE OF MANUFACTURE:
 - raw_format should contain the date exactly as shown.
 - month and year may be null if they cannot be reliably separated.
 
+DATE OF EXPIRY:
+- Extract only when explicitly stated.
+- Examples:
+  "Exp Date: 08/2028"
+  "Expiry: August 2028"
+  "Use By: 07/2028"
+  "Best Before: 08/2028"
+- Do not infer, guess, or assume an expiry date.
+- raw_format should contain the date exactly as shown.
+- month and year may be null if they cannot be reliably separated.
+
 CONSUMER CARE:
 - Extract phone number, email and/or address only when explicitly present.
 - Do not invent contact information.
@@ -152,6 +163,16 @@ EXACT JSON STRUCTURE:
     "raw_format": string | null
   },
 
+  "date_of_expiry": {
+    "value": string | null,
+    "source_text": string | null,
+    "confidence": number,
+    "bbox": null,
+    "month": string | null,
+    "year": string | null,
+    "raw_format": string | null
+  },
+
   "consumer_care": {
     "value": string | null,
     "source_text": string | null,
@@ -216,7 +237,7 @@ Extract the declarations from this OCR text.
 
 Follow the exact JSON structure and extraction rules provided in the system instruction.
 `;
-      const modelName = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+      const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash";
       const maxRetries = 1;
       let attempt = 0;
       let response: any = null;
@@ -343,6 +364,11 @@ Follow the exact JSON structure and extraction rules provided in the system inst
       /(?:Mfg\.?\s*(?:Date|Dt)?|Date\s*of\s*Mfg|Packed\s*(?:Date|Dt)?|Month\s*&\s*Year)[\s:.]*([0-1]?\d[\/-]20\d{2}|[a-zA-Z]{3,9}\s*20\d{2})/i,
     );
 
+    // Date of Expiry
+    const expiryMatch = text.match(
+      /(?:Exp(?:iry)?\s*(?:Date|Dt)?|Use\s*By|Best\s*Before|Best-before|Best\s*Before\s*Date)[\s:.]*([0-3]?\d[\/-][0-1]?\d[\/-]20\d{2}|[0-1]?\d[\/-]20\d{2}|[a-zA-Z]{3,9}\s*20\d{2})/i,
+    );
+
     // Consumer Care
     const phoneMatch = text.match(
       /(?:Consumer\s*Care|Customer\s*Care|Helpline|Toll\s*Free|Grievance)[\s:a-zA-Z0-9|•-]*?([1-9][0-9]{3,4}[-\s]?[0-9]{3,7}|1800[-\s]?[0-9]{3,4}(?:[-\s]?[0-9]{3,4})?)/i,
@@ -422,6 +448,15 @@ Follow the exact JSON structure and extraction rules provided in the system inst
         confidence: dateMatch ? 0.92 : 0.0,
         bbox: findBbox(
           /(?:Mfg\.?\s*(?:Date|Dt)?|Date\s*of\s*Mfg|Packed\s*(?:Date|Dt)?|Month\s*&\s*Year)/i,
+        ),
+      },
+      date_of_expiry: {
+        value: expiryMatch ? expiryMatch[1] : null,
+        raw_format: expiryMatch ? expiryMatch[1] : null,
+        source_text: expiryMatch ? expiryMatch[0] : null,
+        confidence: expiryMatch ? 0.92 : 0.0,
+        bbox: findBbox(
+          /(?:Exp(?:iry)?\s*(?:Date|Dt)?|Use\s*By|Best\s*Before|Best-before|Best\s*Before\s*Date)/i,
         ),
       },
       consumer_care: {

@@ -162,6 +162,7 @@ export class InspectionPipelineService {
       { name: "net_quantity", data: declarations.net_quantity },
       { name: "mrp", data: declarations.mrp },
       { name: "date_of_manufacture", data: declarations.date_of_manufacture },
+      { name: "date_of_expiry", data: declarations.date_of_expiry },
       { name: "consumer_care", data: declarations.consumer_care },
       { name: "country_of_origin", data: declarations.country_of_origin },
     ];

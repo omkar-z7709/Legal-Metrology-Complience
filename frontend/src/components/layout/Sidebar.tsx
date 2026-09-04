@@ -30,6 +30,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("lm_auth_user");
@@ -38,6 +39,7 @@ export function Sidebar() {
         setCurrentUser(JSON.parse(stored));
       } catch {}
     }
+    setMounted(true);
   }, []);
 
   const handleLogout = () => {
@@ -108,6 +110,20 @@ export function Sidebar() {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+
+  if (!mounted) {
+    return (
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 min-h-screen">
+        <div className="p-4 border-b border-slate-100 flex items-center gap-3">
+          <div className="p-2 bg-[#12304A] text-white rounded-lg w-9 h-9" />
+          <div className="flex-1">
+            <div className="h-3 bg-slate-200 rounded w-24 mb-1" />
+            <div className="h-2 bg-slate-100 rounded w-32" />
+          </div>
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 min-h-screen">

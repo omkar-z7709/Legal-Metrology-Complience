@@ -43,6 +43,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
     let userId: string | null = null;
     let userMetadata: any = {};
 
+    // Single DB lookup reused across both paths below (previously looked up twice).
+    const dbUser = await DBRepo.getUserByEmail(email);
+
     const { data, error } = await supabaseClient.auth.signInWithPassword({
       email,
       password,
@@ -54,7 +57,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
       userMetadata = data.user.user_metadata || {};
     } else {
       // Fallback: check seeded DB users with password test@123
-      const dbUser = await DBRepo.getUserByEmail(email);
       if (dbUser && (password === "test@123" || password.length >= 6)) {
         sessionToken = `dev-${dbUser.role.toLowerCase()}`;
         userId = dbUser.id;
@@ -77,7 +79,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
     }
     
     // Check DB or Metadata active status
-    const dbUser = await DBRepo.getUserByEmail(email);
     const isActive = dbUser ? dbUser.isActive !== false : userMetadata.isActive !== false;
 
     if (!isActive) {

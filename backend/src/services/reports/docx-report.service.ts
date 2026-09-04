@@ -47,6 +47,7 @@ export class DocxReportService {
       { key: "net_quantity", label: "Net Quantity" },
       { key: "mrp", label: "Maximum Retail Price (MRP)" },
       { key: "date_of_manufacture", label: "Date of Manufacture / Packing" },
+      { key: "date_of_expiry", label: "Date of Expiry / Best Before" },
       { key: "consumer_care", label: "Consumer Care Contact" },
       { key: "country_of_origin", label: "Country of Origin" },
     ];

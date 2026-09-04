@@ -1,6 +1,6 @@
 import { embedTexts } from "./embedding.service.js";
 import { RulesService, LegalRuleMetadata } from "../rules/rules.service.js";
-import { db, checkPostgresConnection } from "../../db/index.js";
+import { db } from "../../db/index.js";
 import { ruleEmbeddings, rules } from "../../db/schema.js";
 import { sql, eq } from "drizzle-orm";
 
@@ -68,6 +68,8 @@ export class RagLegalService {
   /**
    * Retrieves relevant legal context using pgvector or in-memory cosine similarity.
    * Falls back to keyword scoring if embeddings are missing.
+   * The query is embedded exactly ONCE and the vector is reused across the
+   * pgvector and in-memory paths (previously each embed query called Gemini).
    */
   static async retrieveLegalContext(
     query: string,
@@ -76,37 +78,36 @@ export class RagLegalService {
   ): Promise<LegalContextChunk[]> {
     console.log(`[RAG] Query received: "${query}" (category: ${category})`);
 
-    // 1. Try real pgvector search first if Postgres is connected
+    // 1. Embed the query once. If embedding is unavailable (no API key), skip
+    //    straight to the keyword fallback which needs no embeddings.
+    let queryVec: number[] | null = null;
     try {
-      const dbStatus = await checkPostgresConnection();
-      if (dbStatus.connected) {
-        const vectorResults = await RagLegalService._pgvectorSearch(query, topK);
-        if (vectorResults && vectorResults.length > 0) {
-          console.log(
-            `[RAG] pgvector retrieved ${vectorResults.length} chunks (Top: [${vectorResults[0].ruleNumber}] ${Math.round(vectorResults[0].similarityScore * 100)}%)`
-          );
-          return vectorResults;
-        }
+      [queryVec] = await embedTexts([query], "RETRIEVAL_QUERY");
+    } catch (err: any) {
+      console.warn(`[RAG] Query embedding notice: ${err.message}. Using keyword fallback.`);
+      return RagLegalService._keywordFallback(query, category, topK);
+    }
+
+    // 2. Try real pgvector search (no live connection ping - errors fall back silently)
+    try {
+      const vectorResults = await RagLegalService._pgvectorSearch(queryVec, topK);
+      if (vectorResults && vectorResults.length > 0) {
+        return vectorResults;
       }
     } catch (err: any) {
       console.warn(`[RAG] pgvector search notice: ${err.message}. Using in-memory vector search.`);
     }
 
-    // 2. In-Memory Vector Search using Cosine Similarity
+    // 3. In-Memory Vector Search using Cosine Similarity (reuses the query vector)
     try {
       await this.ensureInitialized();
-      const inMemoryResults = await this._inMemoryVectorSearch(query, category, topK);
-      if (inMemoryResults.length > 0) {
-        console.log(
-          `[RAG] In-memory vector search retrieved ${inMemoryResults.length} chunks (Top: [${inMemoryResults[0].ruleNumber}] ${Math.round(inMemoryResults[0].similarityScore * 100)}%)`
-        );
-        return inMemoryResults;
-      }
+      const inMemoryResults = await this._inMemoryVectorSearch(queryVec, category, topK);
+      if (inMemoryResults.length > 0) return inMemoryResults;
     } catch (err: any) {
       console.warn(`[RAG] In-memory vector search notice: ${err.message}. Using keyword fallback.`);
     }
 
-    // 3. Keyword fallback
+    // 4. Keyword fallback
     const keywordResults = await RagLegalService._keywordFallback(query, category, topK);
     console.log(`[RAG] Keyword fallback retrieved ${keywordResults.length} chunks.`);
     return keywordResults;
@@ -114,10 +115,9 @@ export class RagLegalService {
 
   /** Real vector search using PostgreSQL pgvector <=> (cosine distance) */
   private static async _pgvectorSearch(
-    query: string,
+    queryVec: number[],
     topK: number
   ): Promise<LegalContextChunk[]> {
-    const [queryVec] = await embedTexts([query], "RETRIEVAL_QUERY");
     const queryVecStr = `[${queryVec.join(",")}]`;
 
     const rows = await db.execute(sql`
@@ -153,11 +153,10 @@ export class RagLegalService {
 
   /** In-memory cosine similarity search over cached embeddings */
   private static async _inMemoryVectorSearch(
-    query: string,
+    queryVec: number[],
     category: string,
     topK: number
   ): Promise<LegalContextChunk[]> {
-    const [queryVec] = await embedTexts([query], "RETRIEVAL_QUERY");
     const allRules = await RulesService.getAllActiveRules();
     const ruleMap = new Map(allRules.map((r) => [r.id, r]));
 

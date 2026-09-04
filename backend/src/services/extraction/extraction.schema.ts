@@ -49,6 +49,7 @@ export const structuredDeclarationsSchema = z.object({
   net_quantity: netQuantityFieldSchema,
   mrp: mrpFieldSchema,
   date_of_manufacture: dateFieldSchema,
+  date_of_expiry: dateFieldSchema,
   consumer_care: consumerCareFieldSchema,
   country_of_origin: declarationFieldSchema,
   other_declarations: z.array(

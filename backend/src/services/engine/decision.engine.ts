@@ -86,20 +86,22 @@ export class ComplianceDecisionEngine {
     const failedChecks = allChecks.filter((c) => c.status === "FAIL");
     const reviewChecks = allChecks.filter((c) => c.status === "REVIEW");
 
-    // 4. Enrich failed checks with specific RAG statutory citations
-    const violations: EnrichedViolation[] = await Promise.all(
-      failedChecks.map(async (check) => {
-        const specificLegalContext = await RagLegalService.retrieveLegalContext(
-          `${check.ruleNumber} ${check.title} ${check.fieldName} ${check.reason}`,
-          classification.category,
-          2
-        );
-        return {
-          ...check,
-          legalContext: specificLegalContext,
-        };
-      })
-    );
+    // 4. Enrich failed checks with RAG statutory citations.
+    //    Reuses the single retrieval above (cheap exact/similar ruleNumb matching)
+    //    instead of issuing a separate Gemini embedding + RAG call per violation.
+    const violations: EnrichedViolation[] = failedChecks.map((check) => {
+      const checkNumber = check.ruleNumber;
+      const checkTitle = (check.title || "").toLowerCase();
+      const legalContext = retrievedContext.filter(
+        (c) =>
+          (checkNumber && c.ruleNumber === checkNumber) ||
+          (checkTitle && (c.text || "").toLowerCase().includes(checkTitle)),
+      );
+      return {
+        ...check,
+        legalContext: legalContext.slice(0, 2),
+      };
+    });
     const totalRagTime = (Date.now() - ragStart) - compTime;
 
     console.log(`[PERF] RAG: ${totalRagTime} ms`);

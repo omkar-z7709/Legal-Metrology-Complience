@@ -244,9 +244,18 @@ export const scanRoutes: FastifyPluginAsync = async (
           ),
         })),
       );
-      const extractedFields = await DBRepo.getScanExtractedFields(scan.id);
-      const complianceChecks = await DBRepo.getScanComplianceChecks(scan.id);
-      const violations = await DBRepo.getScanViolations(scan.id);
+      // Resolve relative file URLs to absolute URLs for the browser
+      for (const img of imagesWithUrls) {
+        if (typeof img.url === "string" && img.url.startsWith("/files/")) {
+          img.url = `${request.protocol}://${request.host}${img.url}`;
+        }
+      }
+      // Run the three detail queries in parallel instead of sequentially
+      const [extractedFields, complianceChecks, violations] = await Promise.all([
+        DBRepo.getScanExtractedFields(scan.id),
+        DBRepo.getScanComplianceChecks(scan.id),
+        DBRepo.getScanViolations(scan.id),
+      ]);
 
       return reply.status(200).send({
         success: true,
