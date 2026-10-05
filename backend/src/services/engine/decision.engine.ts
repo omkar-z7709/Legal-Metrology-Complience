@@ -1,6 +1,6 @@
 import { StructuredDeclarations } from "../extraction/extraction.schema.js";
 import { ClassificationResult } from "../classification/classifier.service.js";
-import { IValidator, ValidationCheckResult } from "./validators/validator.interface.js";
+import { IValidator, ValidationCheckResult, EvidenceQuality, gateAbsenceFinding } from "./validators/validator.interface.js";
 import { PresenceValidator } from "./validators/presence.validator.js";
 import { MRPValidator } from "./validators/mrp.validator.js";
 import { QuantityValidator } from "./validators/quantity.validator.js";
@@ -47,7 +47,8 @@ export class ComplianceDecisionEngine {
   static async evaluate(
     declarations: StructuredDeclarations,
     classification: ClassificationResult,
-    rawOcrText: string
+    rawOcrText: string,
+    evidence?: EvidenceQuality
   ): Promise<ComplianceDecision> {
     // 1. Construct dynamic compliance search query from actual inspection data
     const queryParts: string[] = [];
@@ -77,14 +78,19 @@ export class ComplianceDecisionEngine {
     const compStart = Date.now();
     const allChecks: ValidationCheckResult[] = [];
     for (const validator of this.validators) {
-      const results = validator.validate(declarations, classification, rawOcrText);
+      const results = validator.validate(declarations, classification, rawOcrText, evidence);
       allChecks.push(...results);
     }
     const compTime = Date.now() - compStart;
 
-    const passedChecks = allChecks.filter((c) => c.status === "PASS");
-    const failedChecks = allChecks.filter((c) => c.status === "FAIL");
-    const reviewChecks = allChecks.filter((c) => c.status === "REVIEW");
+    // Absence-based findings ("X is missing") require readable evidence of the
+    // panel. If this scan could not be read reliably, they cannot be substantiated
+    // and must not be recorded as statutory failures.
+    const gated = allChecks.map((c) => gateAbsenceFinding(c, evidence));
+
+    const passedChecks = gated.filter((c) => c.status === "PASS");
+    const failedChecks = gated.filter((c) => c.status === "FAIL");
+    const reviewChecks = gated.filter((c) => c.status === "REVIEW");
 
     // 4. Enrich failed checks with RAG statutory citations.
     //    Reuses the single retrieval above (cheap exact/similar ruleNumb matching)

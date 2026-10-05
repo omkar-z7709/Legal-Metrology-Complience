@@ -8,34 +8,40 @@ import {
 const EXTRACTION_SYSTEM_PROMPT = `
 You are a Legal Metrology (Packaged Commodities) Rules, 2011 Extraction Specialist.
 
-Your task is to analyze OCR text extracted from a packaged commodity and extract mandatory declarations into the EXACT JSON structure specified below.
+Your task is to analyze IMAGES of a packaged commodity label (plus any supporting OCR text) and extract mandatory declarations into the EXACT JSON structure specified below.
 
 IMPORTANT RULES:
 
-1. ONLY extract information explicitly present in the OCR text.
+1. ONLY extract information you can actually SEE on the label image or that is explicitly present in the OCR text.
 2. NEVER guess, infer, assume, or invent information.
-3. If a declaration is absent or cannot be identified from the OCR text:
+3. Read the IMAGES as the primary source of truth. The OCR text is a noisy, partial aid only; it frequently misreads digits and letters (for example "Rs, 05/-" for "Rs. 25/-"). Where the image and the OCR text disagree, TRUST THE IMAGE.
+4. If a declaration is absent or cannot be confidently identified:
    - value must be null
    - source_text must be null
    - confidence must be 0
    - bbox must be null
-4. Every declaration MUST contain:
+5. Every declaration MUST contain:
    - value
    - source_text
    - confidence
    - bbox
-5. confidence MUST always be a number between 0 and 1.
-6. bbox should ALWAYS be null. Do not attempt to calculate bounding boxes from OCR text.
-7. other_declarations MUST ALWAYS be an array.
-8. If there are no other declarations, return [].
-9. Return ONLY valid JSON. No markdown, explanations, or code fences.
+6. confidence MUST always be a number between 0 and 1.
+7. BOUNDING BOXES (critical for Rule 7 placement and Rule 8 font-size checks):
+   - When a declaration IS found on the image, return its bbox as a tight box around that printed text.
+   - Use NORMALISED integer coordinates on a 0-1000 scale for BOTH axes: 0 = top/left edge, 1000 = bottom/right edge, regardless of the real image resolution.
+   - Format: {"x1": int, "y1": int, "x2": int, "y2": int} with x2 > x1 and y2 > y1.
+   - Return bbox: null ONLY when the declaration is absent (value is null).
+   - Never fabricate a bounding box for a declaration you did not actually locate.
+8. other_declarations MUST ALWAYS be an array.
+9. If there are no other declarations, return [].
+10. Return ONLY valid JSON. No markdown, explanations, or code fences.
 
 EXTRACTION RULES:
 
 MRP:
 - Extract the numeric MRP amount.
 - currency should normally be "INR".
-- Set is_inclusive_of_taxes to true ONLY when the OCR explicitly contains wording such as:
+- Set is_inclusive_of_taxes to true ONLY when the label explicitly shows wording such as:
   "incl. of all taxes"
   "inclusive of all taxes"
   "inclusive of taxes"
@@ -109,35 +115,35 @@ EXACT JSON STRUCTURE:
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null
   },
 
   "manufacturer": {
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null
   },
 
   "packer": {
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null
   },
 
   "importer": {
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null
   },
 
   "net_quantity": {
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null,
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null,
     "numeric_value": number | null,
     "unit": string | null
   },
@@ -146,7 +152,7 @@ EXACT JSON STRUCTURE:
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null,
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null,
     "numeric_value": number | null,
     "currency": string | null,
     "is_inclusive_of_taxes": boolean | null,
@@ -157,7 +163,7 @@ EXACT JSON STRUCTURE:
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null,
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null,
     "month": string | null,
     "year": string | null,
     "raw_format": string | null
@@ -167,7 +173,7 @@ EXACT JSON STRUCTURE:
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null,
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null,
     "month": string | null,
     "year": string | null,
     "raw_format": string | null
@@ -177,7 +183,7 @@ EXACT JSON STRUCTURE:
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null,
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null,
     "phone": string | null,
     "email": string | null,
     "address": string | null
@@ -187,7 +193,7 @@ EXACT JSON STRUCTURE:
     "value": string | null,
     "source_text": string | null,
     "confidence": number,
-    "bbox": null
+    "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null
   },
 
   "other_declarations": [
@@ -205,125 +211,404 @@ For missing declarations, use this pattern:
   "value": null,
   "source_text": null,
   "confidence": 0,
-  "bbox": null
+  "bbox": { "x1": int, "y1": int, "x2": int, "y2": int } | null
 }
 
 Return ONLY the JSON object.
 `;
 
+export interface ExtractionInput {
+  /** OCR text is a noisy aid; the images are the source of truth. */
+  ocrText: string;
+  /** Preprocessed package images to send to Gemini as real vision input. */
+  images?: { buffer: Buffer; mimeType: string }[];
+}
+
+export interface ExtractionProvenance {
+  engine: "gemini-vision" | "regex-fallback";
+  model?: string;
+  imageCount: number;
+  ocrProvider?: string;
+  attempts: number;
+  degraded: boolean;
+  reason?: string;
+}
+
+export interface ExtractionResult {
+  declarations: StructuredDeclarations;
+  provenance: ExtractionProvenance;
+}
+
+/** Models verified to serve vision+JSON on this project. Ordered by preference. */
+const MODEL_FALLBACK_CHAIN = [
+  "gemini-3.5-flash-lite",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-flash-lite",
+];
+
 export class GeminiExtractor {
-  private static ai: GoogleGenAI | null = process.env.GEMINI_API_KEY
-    ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
-    : null;
+  // Lazily constructed: a static field initializer runs at module-load time, which
+  // can be BEFORE dotenv has populated process.env, permanently pinning `ai` to null.
+  private static _ai: GoogleGenAI | null | undefined;
 
-  /**
-   * Extracts structured legal declarations from OCR output using Gemini with Zod validation.
-   */
-  static async extractDeclarations(
-    ocrResult: OcrResult,
-  ): Promise<StructuredDeclarations> {
-    const ocrText = ocrResult.rawText;
-
-    // 1. If Gemini API key is available, attempt Gemini model with fast timeout
-    if (this.ai && process.env.GEMINI_API_KEY) {
-      const prompt = `
-OCR TEXT FROM PRODUCT PACKAGE:
-
-"""
-${ocrText}
-"""
-
-Extract the declarations from this OCR text.
-
-Follow the exact JSON structure and extraction rules provided in the system instruction.
-`;
-      const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-      const maxRetries = 1;
-      let attempt = 0;
-      let response: any = null;
-
-      try {
-        while (attempt <= maxRetries) {
-          try {
-            console.log(`[GEMINI] Calling model '${modelName}' for declaration extraction (Attempt ${attempt + 1})`);
-            const callPromise = this.ai.models.generateContent({
-              model: modelName,
-              contents: prompt,
-              config: {
-                systemInstruction: EXTRACTION_SYSTEM_PROMPT,
-                responseMimeType: "application/json",
-              },
-            });
-
-            const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 6000);
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(
-                () => reject(new Error(`Gemini request timeout after ${timeoutMs}ms`)),
-                timeoutMs,
-              ),
-            );
-
-            response = await Promise.race([callPromise, timeoutPromise]);
-            console.log(`[GEMINI] RESPONSE RECEIVED`);
-            break;
-          } catch (err: any) {
-            const status = err.status || err.statusCode || (err.message?.includes("429") ? 429 : err.message?.includes("401") ? 401 : err.message?.includes("404") ? 404 : 500);
-            const message = err.message || "Unknown Gemini API error";
-            console.warn(`[GEMINI] API FAILED status: ${status} message: ${message}`);
-
-            const isFetchFailed = message.includes("fetch failed");
-            const isRetryable = !isFetchFailed && (status === 429 || status >= 500 || message.includes("timeout")) && attempt < maxRetries;
-
-            if (isRetryable) {
-              attempt++;
-              const backoffMs = attempt * 500;
-              console.log(`[GEMINI] Retrying request in ${backoffMs}ms...`);
-              await new Promise((r) => setTimeout(r, backoffMs));
-            } else {
-              throw err;
-            }
-          }
-        }
-
-        if (response) {
-          let rawJsonText =
-            typeof response.text === "function"
-              ? response.text()
-              : typeof response.text === "string"
-                ? response.text
-                : response.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-          rawJsonText = rawJsonText
-            .replace(/^```(?:json)?\s*/i, "")
-            .replace(/\s*```$/i, "")
-            .trim();
-
-          let parsedJson: any;
-          try {
-            parsedJson = JSON.parse(rawJsonText);
-          } catch (jsonErr: any) {
-            console.warn(`[GEMINI] JSON PARSE FAILED: ${jsonErr.message}`);
-            throw jsonErr;
-          }
-
-          try {
-            const validated = structuredDeclarationsSchema.parse(parsedJson);
-            console.log(`[GEMINI] Successfully extracted and validated structured declarations.`);
-            return validated;
-          } catch (zodErr: any) {
-            console.warn(`[VALIDATION] ZOD FAILED: ${zodErr.message}`);
-            throw zodErr;
-          }
-        }
-      } catch (err: any) {
+  private static get ai(): GoogleGenAI | null {
+    if (this._ai === undefined) {
+      const key = process.env.GEMINI_API_KEY;
+      this._ai = key ? new GoogleGenAI({ apiKey: key }) : null;
+      if (!this._ai) {
         console.warn(
-          `[GEMINI] Notice: ${err.message}. Using deterministic fallback parser.`,
+          "[GEMINI] GEMINI_API_KEY is not set - extraction will use degraded regex fallback.",
         );
       }
     }
+    return this._ai;
+  }
 
-    // 2. Deterministic Regex/Rule-Based Fallback Parser (Guarantees local execution without API keys)
-    return this.deterministicFallbackExtract(ocrResult);
+  private static get hasApiKey(): boolean {
+    return !!this.ai;
+  }
+
+  private static get modelChain(): string[] {
+    const configured = process.env.GEMINI_MODEL;
+    return configured
+      ? [configured, ...MODEL_FALLBACK_CHAIN.filter((m) => m !== configured)]
+      : [...MODEL_FALLBACK_CHAIN];
+  }
+
+  /**
+   * Extracts structured legal declarations from the package IMAGES (primary source of
+   * truth) using Gemini vision, falling back to OCR-text regex parsing only when the
+   * model is genuinely unreachable. Returns provenance so the UI never claims a
+   * Gemini extraction that did not happen.
+   */
+  static async extractDeclarations(
+    input: ExtractionInput | OcrResult,
+  ): Promise<ExtractionResult> {
+    // Backwards-compatible single-arg call sites.
+    const { ocrText, images }: ExtractionInput =
+      "rawText" in (input as OcrResult)
+        ? { ocrText: (input as OcrResult).rawText, images: [] }
+        : (input as ExtractionInput);
+
+    const ocrProvider = "rawText" in (input as OcrResult)
+      ? (input as OcrResult).provider
+      : undefined;
+
+    const imageCount = images?.length ?? 0;
+
+    if (this.hasApiKey) {
+      const chain = this.modelChain;
+      let attempts = 0;
+      const failures: string[] = [];
+
+      // Run ONE request per package image. Sending several images in a single
+      // request caused the model to drop declarations found on the other images
+      // (e.g. net quantity on the front panel), and made a single normalised
+      // bbox ambiguous as to which image it referred to.
+      const perImage = images?.length
+        ? images
+        : [{ buffer: undefined as any, mimeType: "" }];
+      const ocrChunks = this.splitOcrByImage(ocrText, perImage.length);
+
+      const merged = this.emptyDeclarations();
+      let usedModel: string | undefined;
+      let succeeded = 0;
+
+      outer: for (const modelName of chain) {
+        for (let attempt = 0; attempt < Number(process.env.GEMINI_MAX_RETRIES || 4); attempt++) {
+          attempts++;
+          try {
+            console.log(
+              `[GEMINI] model='${modelName}' attempt=${attempt + 1} images=${perImage.length}`,
+            );
+
+            for (let i = 0; i < perImage.length; i++) {
+              const img = perImage[i];
+              const perImagePrompt = this.buildUserPrompt(
+                ocrChunks[i] ?? "",
+                Boolean(img.buffer),
+              );
+              const response: any = await this.callWithTimeout(
+                modelName,
+                perImagePrompt,
+                img.buffer ? [img] : undefined,
+              );
+
+              let rawJsonText =
+                typeof response.text === "function"
+                  ? response.text()
+                  : typeof response.text === "string"
+                    ? response.text
+                    : (response.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}");
+
+              rawJsonText = rawJsonText
+                .replace(/^```(?:json)?\s*/i, "")
+                .replace(/\s*```$/i, "")
+                .trim();
+
+              const parsedJson = JSON.parse(rawJsonText);
+              const validated = structuredDeclarationsSchema.parse(parsedJson);
+              GeminiExtractor.normalize(validated);
+              this.mergeInto(merged, validated, i);
+              succeeded++;
+            }
+
+            usedModel = modelName;
+            console.log(
+              `[GEMINI] extraction OK via '${modelName}' (${perImage.length} image(s), ${succeeded} parsed)`,
+            );
+            break outer;
+          } catch (err: any) {
+            const message = err?.message || "Unknown Gemini API error";
+            const status = this.statusOf(err);
+            const isFatal =
+              status === 400 || status === 401 || status === 403 || status === 404;
+            console.warn(
+              `[GEMINI] ${modelName} failed (status=${status} attempt=${attempt + 1}): ${message}`,
+            );
+            failures.push(`${modelName}:${status}`);
+
+            // Bad prompt/JSON shape or bad key -> this model will not recover.
+            if (isFatal && status !== 404) break;
+
+            // Exponential backoff with jitter, capped.
+            const backoff = Math.min(8000, 500 * 2 ** attempt) + Math.random() * 250;
+            await new Promise((r) => setTimeout(r, backoff));
+          }
+        }
+      }
+
+      if (usedModel) {
+        return {
+          declarations: merged,
+          provenance: {
+            engine: "gemini-vision",
+            model: usedModel,
+            imageCount,
+            ocrProvider,
+            attempts,
+            degraded: false,
+          },
+        };
+      }
+
+      const reason = `Gemini unavailable after ${attempts} attempt(s): ${failures.join(", ")}`;
+      console.warn(`[GEMINI] ${reason} -> degrading to OCR regex fallback`);
+      return {
+        declarations: this.deterministicFallbackExtract({
+          rawText: ocrText,
+          averageConfidence: 0,
+          lines: [],
+          provider: ocrProvider || "none",
+          processingTimeMs: 0,
+        }),
+        provenance: {
+          engine: "regex-fallback",
+          imageCount,
+          ocrProvider,
+          attempts,
+          degraded: true,
+          reason,
+        },
+      };
+    }
+
+    // No API key configured at all.
+    return {
+      declarations: this.deterministicFallbackExtract({
+        rawText: ocrText,
+        averageConfidence: 0,
+        lines: [],
+        provider: ocrProvider || "none",
+        processingTimeMs: 0,
+      }),
+      provenance: {
+        engine: "regex-fallback",
+        imageCount,
+        ocrProvider,
+        attempts: 0,
+        degraded: true,
+        reason: "GEMINI_API_KEY not configured",
+      },
+    };
+  }
+
+  private static buildUserPrompt(ocrText: string, hasImages: boolean): string {
+    return `
+You have been given ${hasImages ? "an image of a packaged commodity label" : "NO image"}.
+
+The image is the authoritative source. The OCR text below is a noisy partial aid
+(it commonly misreads digits and letters, e.g. "Rs, 05/-" for "Rs. 25/-").
+Where they conflict, TRUST THE IMAGE.
+
+${hasImages ? "" : "WARNING: No image was provided. Only use the OCR text.\n"}
+OCR TEXT (noisy, untrustworthy for digits):
+"""
+${ocrText.slice(0, 6000) || "(no OCR text available)"}
+"""
+
+Extract every mandatory declaration you can actually see on this label.
+Return a tight normalised (0-1000) bounding box for each declaration you locate.
+Report a declaration ONLY if you can genuinely see it; otherwise use null.
+`;
+  }
+
+  /**
+   * Derives structured sub-fields the model may omit from a value it DID return.
+   * This is parsing of observed text, not inference: "58 g" -> numeric_value 58,
+   * unit "g". Without this, a correctly read declaration was reported as missing.
+   */
+  private static normalize(d: StructuredDeclarations): void {
+    const qty: any = d.net_quantity;
+    if (qty?.value && !qty.numeric_value) {
+      const m = String(qty.value).match(
+        /(\d+(?:\.\d+)?)\s*(kg|mg|g|ml|l|ltr|litre|liter|cl|dl|N|u|units?|tablets?|capsules?)\b/i,
+      );
+      if (m) {
+        qty.numeric_value = parseFloat(m[1]);
+        qty.unit = m[2].toLowerCase();
+      }
+    }
+
+    const mrp: any = d.mrp;
+    if (mrp?.value && !mrp.numeric_value) {
+      const m = String(mrp.value).replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+      if (m) {
+        mrp.numeric_value = parseFloat(m[1]);
+        mrp.currency = mrp.currency || "INR";
+      }
+    }
+  }
+
+  /** Splits the combined OCR blob back into per-image chunks. */
+  private static splitOcrByImage(ocrText: string, count: number): string[] {
+    if (count <= 1) return [ocrText];
+    const parts = ocrText.split(/--- PACKAGE IMAGE \d+ ---/).slice(1);
+    if (parts.length === count) return parts;
+    return Array.from({ length: count }, () => ocrText);
+  }
+
+  private static emptyDeclarations(): StructuredDeclarations {
+    const blank = () => ({
+      value: null,
+      source_text: null,
+      confidence: 0,
+      bbox: null,
+      image_index: null,
+    });
+    return {
+      generic_name: blank(),
+      manufacturer: blank(),
+      packer: blank(),
+      importer: blank(),
+      net_quantity: { ...blank(), numeric_value: null, unit: null },
+      mrp: {
+        ...blank(),
+        numeric_value: null,
+        currency: null,
+        is_inclusive_of_taxes: null,
+        unit_sale_price: null,
+      },
+      date_of_manufacture: { ...blank(), month: null, year: null, raw_format: null },
+      date_of_expiry: { ...blank(), month: null, year: null, raw_format: null },
+      consumer_care: { ...blank(), phone: null, email: null, address: null },
+      country_of_origin: blank(),
+      other_declarations: [],
+    } as StructuredDeclarations;
+  }
+
+  /**
+   * Merges one image's extraction into the aggregate. A declaration already found
+   * on another image is kept unless the new value has strictly higher confidence.
+   */
+  private static mergeInto(
+    target: StructuredDeclarations,
+    incoming: StructuredDeclarations,
+    imageIndex: number,
+  ): void {
+    for (const key of Object.keys(incoming) as (keyof StructuredDeclarations)[]) {
+      if (key === "other_declarations") {
+        const existing = (target.other_declarations ?? []).map((d) => d.label);
+        for (const d of incoming.other_declarations ?? []) {
+          if (!existing.includes(d.label)) target.other_declarations.push(d);
+        }
+        continue;
+      }
+
+      const next = incoming[key] as any;
+      if (!next) continue;
+      const current = target[key] as any;
+
+      // Tag provenance so the normalised bbox can be mapped to its source image.
+      next.image_index = next.bbox ? imageIndex : null;
+
+      if (current.value && !next.value) continue;
+      if (!current.value && next.value) {
+        (target as any)[key] = next;
+        continue;
+      }
+      if (next.confidence > current.confidence) {
+        (target as any)[key] = next;
+      }
+    }
+  }
+
+  private static statusOf(err: any): number {
+    const s = err?.status || err?.statusCode || err?.code;
+    if (typeof s === "number") return s;
+    const m = err?.message || "";
+    if (m.includes("429")) return 429;
+    if (m.includes("401")) return 401;
+    if (m.includes("403")) return 403;
+    if (m.includes("400")) return 400;
+    if (m.includes("404")) return 404;
+    if (m.includes("503")) return 503;
+    return 500;
+  }
+
+  private static async callWithTimeout(
+    modelName: string,
+    prompt: string,
+    images?: { buffer: Buffer; mimeType: string }[],
+  ) {
+    const timeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 90000);
+
+    // REAL VISION INPUT: send the actual package image bytes alongside the prompt.
+    const parts: any[] = [];
+    for (const img of images ?? []) {
+      parts.push({
+        inlineData: {
+          mimeType: img.mimeType,
+          data: img.buffer.toString("base64"),
+        },
+      });
+    }
+    parts.push({ text: prompt });
+
+    const callPromise = this.ai!.models.generateContent({
+      model: modelName,
+      contents: [{ role: "user", parts }],
+      config: {
+        systemInstruction: EXTRACTION_SYSTEM_PROMPT,
+        responseMimeType: "application/json",
+        temperature: 0,
+      },
+    });
+
+    let timer: NodeJS.Timeout;
+    const timeoutPromise = new Promise((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`Gemini request timeout after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
+    });
+
+    try {
+      return await Promise.race([callPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(timer!);
+    }
   }
 
   /**

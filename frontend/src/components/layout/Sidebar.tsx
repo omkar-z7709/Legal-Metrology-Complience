@@ -17,6 +17,7 @@ import {
   Shield,
   LogOut,
   KeyRound,
+  Video,
 } from "lucide-react";
 
 interface NavItem {
@@ -51,6 +52,7 @@ export function Sidebar() {
   const mainNav: NavItem[] = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
     { label: "New Inspection", href: "/inspections/new", icon: ScanSearch, badge: "Action" },
+    { label: "Live Lot Inspection", href: "/inspections/live", icon: Video, badge: "Fast" },
     { label: "Inspections", href: "/inspections", icon: ListChecks },
     { label: "Products", href: "/products", icon: Package },
     { label: "Reports", href: "/reports", icon: FileText },
@@ -127,61 +129,36 @@ export function Sidebar() {
 
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 min-h-screen">
-      {/* Top Section */}
       <div>
-        {/* Brand / Logo */}
         <div className="p-4 border-b border-slate-100 flex items-center gap-3">
           <div className="p-2 bg-[#12304A] text-white rounded-lg">
             <Shield className="w-5 h-5 text-blue-300" />
           </div>
           <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-[#12304A]">
-              Legal Metrology
-            </div>
-            <div className="text-[11px] text-slate-500 font-medium">
-              Compliance Intelligence
-            </div>
+            <div className="text-xs font-bold uppercase tracking-wider text-[#12304A]">Legal Metrology</div>
+            <div className="text-[11px] text-slate-500 font-medium">Compliance Intelligence</div>
           </div>
         </div>
-
-        {/* Navigation Groups */}
         <div className="p-3">
           {renderNavGroup("Main", mainNav)}
           {renderNavGroup("Intelligence", intelligenceNav)}
           {renderNavGroup("Administration", adminNav)}
         </div>
       </div>
-
-      {/* Bottom User Profile Section */}
       <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2">
         <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200">
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-[#12304A] text-white flex items-center justify-center text-xs font-bold shrink-0">
-              {initials}
-            </div>
+            <div className="w-8 h-8 rounded-full bg-[#12304A] text-white flex items-center justify-center text-xs font-bold shrink-0">{initials}</div>
             <div className="text-left overflow-hidden">
-              <div className="text-xs font-semibold text-slate-900 leading-tight truncate">
-                {officerName}
-              </div>
-              <div className="text-[10px] font-medium text-slate-500 truncate">
-                {officerRole} • Dept. of LM
-              </div>
+              <div className="text-xs font-semibold text-slate-900 leading-tight truncate">{officerName}</div>
+              <div className="text-[10px] font-medium text-slate-500 truncate">{officerRole} • Dept. of LM</div>
             </div>
           </div>
-
           <div className="flex items-center gap-1">
-            <Link
-              href="/change-password"
-              title="Change Password"
-              className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md transition-colors"
-            >
+            <Link href="/change-password" title="Change Password" className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md transition-colors">
               <KeyRound className="w-3.5 h-3.5" />
             </Link>
-            <button
-              onClick={handleLogout}
-              title="Sign out"
-              className="p-1.5 text-slate-400 hover:text-red-600 rounded-md transition-colors"
-            >
+            <button onClick={handleLogout} title="Sign out" className="p-1.5 text-slate-400 hover:text-red-600 rounded-md transition-colors">
               <LogOut className="w-3.5 h-3.5" />
             </button>
           </div>

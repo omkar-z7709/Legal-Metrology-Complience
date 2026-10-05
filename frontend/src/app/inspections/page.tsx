@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Eye, Search, Plus, Filter, Calendar, UserCheck } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
+import { Video } from "lucide-react";
 
 export default function InspectionsListPage() {
   const [scans, setScans] = useState<any[]>([]);
@@ -32,7 +33,10 @@ export default function InspectionsListPage() {
   }, []);
 
   const filteredScans = scans.filter((s) => {
-    const productName = s.analysis?.declarations?.generic_name?.value || s.productName || "Commodity";
+    const productName =
+      s.analysis?.declarations?.generic_name?.value ||
+      s.productName ||
+      "Commodity";
     const inspectorName = s.inspectorId || "Sarthak Verma";
     const matchesSearch =
       s.scanNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -43,7 +47,8 @@ export default function InspectionsListPage() {
       filterStatus === "ALL" || s.complianceStatus === filterStatus;
 
     const matchesInspector =
-      inspectorFilter === "ALL" || inspectorName.toLowerCase().includes(inspectorFilter.toLowerCase());
+      inspectorFilter === "ALL" ||
+      inspectorName.toLowerCase().includes(inspectorFilter.toLowerCase());
 
     return matchesSearch && matchesStatus && matchesInspector;
   });
@@ -78,13 +83,20 @@ export default function InspectionsListPage() {
                 Package Inspection History & Search
               </h1>
               <p className="text-sm text-slate-500 mt-1">
-                Authoritative statutory inspection history, search, and compliance filtering under Legal Metrology Rules, 2011.
+                Authoritative statutory inspection history, search, and
+                compliance filtering under Legal Metrology Rules, 2011.
               </p>
             </div>
 
             <Link href="/inspections/new">
               <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
                 Initiate New Inspection
+              </Button>
+            </Link>
+
+            <Link href="/inspections/live">
+              <Button variant="secondary" icon={<Video className="w-4 h-4" />}>
+                Live Lot Inspection
               </Button>
             </Link>
           </div>
@@ -105,7 +117,9 @@ export default function InspectionsListPage() {
             <div className="flex flex-wrap items-center gap-3 text-xs w-full md:w-auto">
               <div className="flex items-center gap-1.5">
                 <Filter className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-slate-500 font-medium">Compliance Status:</span>
+                <span className="text-slate-500 font-medium">
+                  Compliance Status:
+                </span>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
@@ -143,7 +157,8 @@ export default function InspectionsListPage() {
                         scan.analysis?.declarations?.generic_name?.value ||
                         scan.productName ||
                         "Packaged Commodity";
-                      const violationsCount = scan.analysis?.violations?.length || 0;
+                      const violationsCount =
+                        scan.analysis?.violations?.length || 0;
 
                       return (
                         <tr
@@ -151,14 +166,20 @@ export default function InspectionsListPage() {
                           className="hover:bg-slate-50 transition-colors cursor-pointer"
                         >
                           <td className="px-6 py-4 font-mono text-slate-900 font-semibold">
-                            <Link href={`/inspections/${scan.id}`} className="hover:underline text-blue-600">
+                            <Link
+                              href={`/inspections/${scan.id}`}
+                              className="hover:underline text-blue-600"
+                            >
                               {scan.scanNumber}
                             </Link>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="font-semibold text-slate-800">{productName}</div>
+                            <div className="font-semibold text-slate-800">
+                              {productName}
+                            </div>
                             <div className="text-[11px] text-slate-400">
-                              {scan.analysis?.classification?.category || "General Commodity"}
+                              {scan.analysis?.classification?.category ||
+                                "General Commodity"}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-slate-500">
@@ -169,7 +190,9 @@ export default function InspectionsListPage() {
                           </td>
                           <td className="px-6 py-4">
                             <StatusBadge
-                              status={scan.complianceStatus || "REQUIRES_REVIEW"}
+                              status={
+                                scan.complianceStatus || "REQUIRES_REVIEW"
+                              }
                               size="sm"
                             />
                           </td>
@@ -181,7 +204,8 @@ export default function InspectionsListPage() {
                           <td className="px-6 py-4 text-center">
                             {violationsCount > 0 ? (
                               <span className="px-2 py-0.5 bg-red-50 text-red-700 font-bold rounded border border-red-200">
-                                {violationsCount} Violation{violationsCount !== 1 ? "s" : ""}
+                                {violationsCount} Violation
+                                {violationsCount !== 1 ? "s" : ""}
                               </span>
                             ) : (
                               <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-semibold rounded border border-emerald-200">

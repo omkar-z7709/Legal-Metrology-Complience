@@ -36,7 +36,9 @@ Country of Origin: India`,
     processingTimeMs: 250,
   };
 
-  const extracted = await GeminiExtractor.extractDeclarations(compliantOcr);
+  const { declarations: extracted, provenance } =
+    await GeminiExtractor.extractDeclarations(compliantOcr);
+  console.log(`   • Extraction engine : ${provenance.engine} (degraded=${provenance.degraded})`);
 
   // Validate with Zod
   const validated = structuredDeclarationsSchema.parse(extracted);
@@ -82,7 +84,8 @@ Country of Origin: India`,
     processingTimeMs: 180,
   };
 
-  const deficientExtracted = await GeminiExtractor.extractDeclarations(deficientOcr);
+  const { declarations: deficientExtracted } =
+    await GeminiExtractor.extractDeclarations(deficientOcr);
   const validatedDeficient = structuredDeclarationsSchema.parse(deficientExtracted);
 
   console.log(`   • Consumer Care Value  : ${validatedDeficient.consumer_care.value} (Expected: null)`);

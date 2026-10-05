@@ -1,12 +1,17 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { Video } from "lucide-react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { Card, CardHeader, CardBody, CardFooter } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusType } from "@/components/ui/Badge";
-import { checkBackendHealth, BackendHealthResponse, API_BASE_URL } from "@/lib/api";
+import {
+  checkBackendHealth,
+  BackendHealthResponse,
+  API_BASE_URL,
+} from "@/lib/api";
 import {
   ShieldCheck,
   AlertOctagon,
@@ -100,7 +105,11 @@ const mockRecentInspections: InspectionSummary[] = [
 
 const violationBreakdown = [
   { category: "Missing Mandatory Declaration", count: 124, percentage: 38 },
-  { category: "MRP Formatting / Unit Sale Price (Rule 6)", count: 86, percentage: 26 },
+  {
+    category: "MRP Formatting / Unit Sale Price (Rule 6)",
+    count: 86,
+    percentage: 26,
+  },
   { category: "Net Quantity Font Size & Placement", count: 48, percentage: 15 },
   { category: "Consumer Care Details Deficient", count: 39, percentage: 12 },
   { category: "Date of Mfg / Expiry Obscured", count: 29, percentage: 9 },
@@ -146,10 +155,15 @@ export default function DashboardPage() {
   const nonCompliant = stats?.metrics?.nonCompliant ?? 0;
   const requiresReview = stats?.metrics?.requiresReview ?? 0;
   const averageComplianceScore = stats?.metrics?.averageComplianceScore ?? 0;
-  const complianceRate = stats?.metrics?.complianceRatePercentage ?? (totalInspections > 0 ? Math.round((compliant / totalInspections) * 100) : 0);
-  const recentList = stats?.recentInspections && stats.recentInspections.length > 0
-    ? stats.recentInspections
-    : null;
+  const complianceRate =
+    stats?.metrics?.complianceRatePercentage ??
+    (totalInspections > 0
+      ? Math.round((compliant / totalInspections) * 100)
+      : 0);
+  const recentList =
+    stats?.recentInspections && stats.recentInspections.length > 0
+      ? stats.recentInspections
+      : null;
 
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
@@ -172,7 +186,8 @@ export default function DashboardPage() {
                 Enforcement & Compliance Overview
               </h1>
               <p className="text-sm text-slate-500 mt-1">
-                Legal Metrology (Packaged Commodities) Rules, 2011 Automated Inspection System
+                Legal Metrology (Packaged Commodities) Rules, 2011 Automated
+                Inspection System
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -182,6 +197,15 @@ export default function DashboardPage() {
                   icon={<ScanSearch className="w-4 h-4" />}
                 >
                   New Inspection
+                </Button>
+              </Link>
+
+              <Link href="/inspections/live">
+                <Button
+                  variant="secondary"
+                  icon={<Video className="w-4 h-4" />}
+                >
+                  Live Lot Inspection
                 </Button>
               </Link>
             </div>
@@ -198,7 +222,8 @@ export default function DashboardPage() {
                   Subsystem Infrastructure Status
                 </div>
                 <div className="text-xs text-slate-500">
-                  Fastify Backend (v0.1.0) & Supabase Integration (Module 0 Foundation)
+                  Fastify Backend (v0.1.0) & Supabase Integration (Module 0
+                  Foundation)
                 </div>
               </div>
             </div>
@@ -208,7 +233,8 @@ export default function DashboardPage() {
                 <span className="text-slate-500">Fastify API:</span>
                 {health ? (
                   <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium border border-emerald-200">
-                    <CheckCircle2 className="w-3 h-3" /> Online ({health.system.memoryMb} MB)
+                    <CheckCircle2 className="w-3 h-3" /> Online (
+                    {health.system.memoryMb} MB)
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-2 py-0.5 rounded-full font-medium border border-red-200">
@@ -223,11 +249,13 @@ export default function DashboardPage() {
                 <span className="text-slate-500">Supabase DB:</span>
                 {health?.dependencies.supabase.status === "connected" ? (
                   <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium border border-emerald-200">
-                    <CheckCircle2 className="w-3 h-3" /> Connected ({health.dependencies.supabase.latencyMs}ms)
+                    <CheckCircle2 className="w-3 h-3" /> Connected (
+                    {health.dependencies.supabase.latencyMs}ms)
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full font-medium border border-amber-200">
-                    <Clock3 className="w-3 h-3" /> Standby ({health?.dependencies.supabase.latencyMs || 0}ms)
+                    <Clock3 className="w-3 h-3" /> Standby (
+                    {health?.dependencies.supabase.latencyMs || 0}ms)
                   </span>
                 )}
               </div>
@@ -302,7 +330,10 @@ export default function DashboardPage() {
                     {nonCompliant.toLocaleString()}
                   </span>
                   <span className="text-xs font-medium text-red-600">
-                    {totalInspections > 0 ? Math.round((nonCompliant / totalInspections) * 100) : 0}% flagged
+                    {totalInspections > 0
+                      ? Math.round((nonCompliant / totalInspections) * 100)
+                      : 0}
+                    % flagged
                   </span>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
@@ -327,7 +358,10 @@ export default function DashboardPage() {
                     {requiresReview.toLocaleString()}
                   </span>
                   <span className="text-xs font-medium text-amber-700">
-                    {totalInspections > 0 ? Math.round((requiresReview / totalInspections) * 100) : 0}% pending
+                    {totalInspections > 0
+                      ? Math.round((requiresReview / totalInspections) * 100)
+                      : 0}
+                    % pending
                   </span>
                 </div>
                 <div className="mt-2 text-xs text-slate-500">
@@ -345,14 +379,18 @@ export default function DashboardPage() {
                 title="Statutory Violation Distribution"
                 description="Breakdown of detected non-compliance instances by Rule requirement"
                 action={
-                  <span className="text-xs text-slate-400 font-medium">Last 30 Days</span>
+                  <span className="text-xs text-slate-400 font-medium">
+                    Last 30 Days
+                  </span>
                 }
               />
               <CardBody className="space-y-4">
                 {violationBreakdown.map((item, idx) => (
                   <div key={idx} className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium text-slate-700">{item.category}</span>
+                      <span className="font-medium text-slate-700">
+                        {item.category}
+                      </span>
                       <span className="text-slate-500">
                         {item.count} cases ({item.percentage}%)
                       </span>
@@ -368,7 +406,10 @@ export default function DashboardPage() {
               </CardBody>
               <CardFooter>
                 <div className="text-xs text-slate-500">
-                  Highest non-compliance found in: <strong className="text-slate-700">Edible Oils & FMCG Food</strong>
+                  Highest non-compliance found in:{" "}
+                  <strong className="text-slate-700">
+                    Edible Oils & FMCG Food
+                  </strong>
                 </div>
                 <Link
                   href="/analytics"
@@ -394,7 +435,8 @@ export default function DashboardPage() {
                     Upload Package Image
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto">
-                    Supports JPEG/PNG up to 20MB. Automatically extracts MRP, Net Qty, Mfg Date, and Manufacturer details.
+                    Supports JPEG/PNG up to 20MB. Automatically extracts MRP,
+                    Net Qty, Mfg Date, and Manufacturer details.
                   </p>
                   <Link href="/inspections/new" className="inline-block mt-4">
                     <Button variant="primary" size="sm">
@@ -405,15 +447,19 @@ export default function DashboardPage() {
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 space-y-1">
                   <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-slate-500" /> Applicable Regulations
+                    <Building2 className="w-3.5 h-3.5 text-slate-500" />{" "}
+                    Applicable Regulations
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Rule 6 (Declarations), Rule 7 (Principal Display Panel), Rule 8 (Letter & Font Size), Rule 9 (Manner of Declaration).
+                    Rule 6 (Declarations), Rule 7 (Principal Display Panel),
+                    Rule 8 (Letter & Font Size), Rule 9 (Manner of Declaration).
                   </p>
                 </div>
               </CardBody>
               <CardFooter>
-                <span className="text-[11px] text-slate-500">Supported formats: JPG, PNG, PDF</span>
+                <span className="text-[11px] text-slate-500">
+                  Supported formats: JPG, PNG, PDF
+                </span>
               </CardFooter>
             </Card>
           </section>
@@ -453,29 +499,47 @@ export default function DashboardPage() {
                   {(recentList || mockRecentInspections).map((item: any) => {
                     const scanId = item.id;
                     const scanNum = item.scanNumber || item.id;
-                    const title = item.productName || item.location || "Packaged Commodity";
+                    const title =
+                      item.productName || item.location || "Packaged Commodity";
                     const brandName = item.brand || "Zonal Enforcement Lot";
                     const categoryName = item.category || "General Commodity";
-                    const dateStr = item.createdAt ? new Date(item.createdAt).toLocaleDateString() : (item.date || "Today");
-                    const inspectorName = item.inspector || "Inspector Sarthak Verma";
-                    const compStatus = item.complianceStatus || item.status || "COMPLIANT";
-                    const scoreVal = Math.round(Number(item.complianceScore ?? item.score ?? 100));
+                    const dateStr = item.createdAt
+                      ? new Date(item.createdAt).toLocaleDateString()
+                      : item.date || "Today";
+                    const inspectorName =
+                      item.inspector || "Inspector Sarthak Verma";
+                    const compStatus =
+                      item.complianceStatus || item.status || "COMPLIANT";
+                    const scoreVal = Math.round(
+                      Number(item.complianceScore ?? item.score ?? 100),
+                    );
 
                     return (
-                      <tr key={scanId} className="hover:bg-slate-50/80 transition-colors">
+                      <tr
+                        key={scanId}
+                        className="hover:bg-slate-50/80 transition-colors"
+                      >
                         <td className="px-6 py-3.5 font-mono text-slate-600 font-medium">
                           {scanNum}
                         </td>
                         <td className="px-6 py-3.5">
-                          <div className="font-semibold text-slate-900">{title}</div>
-                          <div className="text-[11px] text-slate-500">{brandName}</div>
+                          <div className="font-semibold text-slate-900">
+                            {title}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {brandName}
+                          </div>
                         </td>
                         <td className="px-6 py-3.5 text-slate-600">
                           {categoryName}
                         </td>
                         <td className="px-6 py-3.5">
-                          <div className="text-slate-800 font-medium">{dateStr}</div>
-                          <div className="text-[11px] text-slate-500">{inspectorName}</div>
+                          <div className="text-slate-800 font-medium">
+                            {dateStr}
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {inspectorName}
+                          </div>
                         </td>
                         <td className="px-6 py-3.5">
                           <StatusBadge status={compStatus} size="sm" />
@@ -486,8 +550,8 @@ export default function DashboardPage() {
                               scoreVal >= 90
                                 ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                                 : scoreVal >= 70
-                                ? "bg-amber-50 text-amber-700 border border-amber-200"
-                                : "bg-red-50 text-red-700 border border-red-200"
+                                  ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                  : "bg-red-50 text-red-700 border border-red-200"
                             }`}
                           >
                             {scoreVal}%
@@ -512,7 +576,8 @@ export default function DashboardPage() {
             </div>
             <CardFooter>
               <span className="text-xs text-slate-500">
-                Showing {(recentList || mockRecentInspections).length} of {totalInspections.toLocaleString()} total recorded inspections
+                Showing {(recentList || mockRecentInspections).length} of{" "}
+                {totalInspections.toLocaleString()} total recorded inspections
               </span>
               <div className="flex items-center gap-1">
                 <button
@@ -531,10 +596,15 @@ export default function DashboardPage() {
           {/* Legal Regulatory Notice Footer */}
           <footer className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500 space-y-1">
             <p className="font-medium text-slate-600">
-              Government of India • Ministry of Consumer Affairs, Food & Public Distribution • Department of Consumer Affairs
+              Government of India • Ministry of Consumer Affairs, Food & Public
+              Distribution • Department of Consumer Affairs
             </p>
             <p className="text-[11px] text-slate-400 max-w-2xl mx-auto">
-              Automated screening assists enforcement officers by extracting declarations and identifying potential compliance issues under Legal Metrology (Packaged Commodities) Rules, 2011. Final regulatory determination remains subject to authorized officer review.
+              Automated screening assists enforcement officers by extracting
+              declarations and identifying potential compliance issues under
+              Legal Metrology (Packaged Commodities) Rules, 2011. Final
+              regulatory determination remains subject to authorized officer
+              review.
             </p>
           </footer>
         </main>

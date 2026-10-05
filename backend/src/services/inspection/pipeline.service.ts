@@ -61,6 +61,8 @@ export class InspectionPipelineService {
     // 2. OCR Stage
     await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "OCR" });
     const ocrStart = Date.now();
+    const visionImages: { buffer: Buffer; mimeType: string }[] = [];
+    const targetImagesOrder = targetImages.map((i) => i.id);
     const ocrResults = await Promise.all(
       targetImages.map(async (image, idx) => {
         console.log(
@@ -72,9 +74,14 @@ export class InspectionPipelineService {
           const prep = await PreprocessService.preprocess(imageBuffer);
           bufferToOcr = prep.processedBuffer;
         }
+        // Retain the exact bytes we read so Gemini gets REAL vision input.
+        visionImages.push({ buffer: bufferToOcr, mimeType: "image/jpeg" });
         return OcrService.extract(bufferToOcr);
       }),
     );
+
+    // Keep images in a stable order for multi-image prompts.
+    visionImages.sort((a, b) => targetImagesOrder.indexOf(a) - targetImagesOrder.indexOf(b));
 
     // Combine OCR results into single inspection text
     const combinedOcrText = ocrResults
@@ -90,7 +97,7 @@ export class InspectionPipelineService {
       ? "google-cloud-vision"
       : ocrResults.every((r) => r.provider === "tesseract")
         ? "tesseract"
-        : "synthetic";
+        : "unknown";
 
     const ocrResult: OcrResult = {
       rawText: combinedOcrText,
@@ -111,14 +118,25 @@ export class InspectionPipelineService {
     );
     console.log(`[PERF] OCR: ${ocrDurationMs} ms`);
 
-    // 3. Gemini Structured Extraction Stage
+    // 3. Gemini Structured Extraction Stage (VISION: real image bytes + OCR aid)
     await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "EXTRACTION" });
     console.log(
-      `[GEMINI] Invoking Gemini structured extraction on combined package text...`,
+      `[GEMINI] Invoking Gemini vision extraction on ${visionImages.length} image(s) + ${combinedOcrText.length} chars of OCR aid...`,
     );
     const geminiStart = Date.now();
-    const declarations = await GeminiExtractor.extractDeclarations(ocrResult);
+    const { declarations, provenance } = await GeminiExtractor.extractDeclarations({
+      ocrText: combinedOcrText,
+      images: visionImages,
+    });
     const geminiDurationMs = Date.now() - geminiStart;
+    console.log(
+      `[GEMINI] engine=${provenance.engine} model=${provenance.model ?? "n/a"} degraded=${provenance.degraded} attempts=${provenance.attempts}`,
+    );
+    if (provenance.degraded) {
+      console.warn(
+        `[GEMINI] DEGRADED EXTRACTION: ${provenance.reason}. Declaration confidences below are regex-derived estimates, NOT verified model output.`,
+      );
+    }
     console.log(`[PERF] Gemini: ${geminiDurationMs} ms`);
 
     // 4. Product Classification Stage
@@ -141,6 +159,10 @@ export class InspectionPipelineService {
       declarations,
       classification,
       ocrResult.rawText,
+      {
+        ocrConfidence: ocrResult.averageConfidence,
+        extractionDegraded: provenance.degraded,
+      },
     );
 
     // 6. Update Product Category in DB
@@ -232,6 +254,12 @@ export class InspectionPipelineService {
       analysis: {
         ...(existingListingText ? { listingText: existingListingText } : {}),
         declarations,
+        extraction: provenance,
+        ocr: {
+          provider,
+          averageConfidence: ocrResult.averageConfidence,
+          lineCount: ocrResult.lines.length,
+        },
         ...decision,
       },
     });

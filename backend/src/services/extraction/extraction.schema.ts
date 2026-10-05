@@ -15,6 +15,9 @@ export const declarationFieldSchema = z.object({
   source_text: z.string().nullable(),
   confidence: z.number().min(0).max(1),
   bbox: boundingBoxSchema,
+  // Index of the package image this value/bbox was read from (0-based).
+  // Normalised coords are per-image, so localisation is meaningless without it.
+  image_index: z.number().int().min(0).nullable().optional(),
 });
 
 export const netQuantityFieldSchema = declarationFieldSchema.extend({

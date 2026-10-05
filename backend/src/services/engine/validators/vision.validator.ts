@@ -54,29 +54,59 @@ export class VisionQualityValidator implements IValidator {
     }
 
     // 2. Relative Font Size Estimation (Rule 8)
+    // Bounding boxes are NORMALISED to a 0-1000 axis (see extraction prompt), so
+    // heights are expressed as a share of image height, not absolute pixels.
+    // A physical mm value is NOT derivable from an image without a scale
+    // reference, so this can only ever be an estimate requiring caliper check.
     const netQtyBbox = declarations.net_quantity.bbox;
     const mrpBbox = declarations.mrp.bbox;
+    const referenceBbox = netQtyBbox || mrpBbox;
+    const sourceField = netQtyBbox ? "net_quantity" : mrpBbox ? "mrp" : null;
 
-    const hasSpatialBbox = netQtyBbox || mrpBbox;
-    const fontHeightRatio = netQtyBbox ? (netQtyBbox.y2 - netQtyBbox.y1) : 40;
-
-    results.push({
-      ruleId: "RULE-8-1-FONT-SIZE",
-      ruleNumber: "Rule 8",
-      fieldName: "font_height_estimation",
-      status: "PASS",
-      severity: "MEDIUM",
-      title: "Estimated Numeral & Letter Height (Rule 8)",
-      reason: "Net quantity and MRP numerals appear visually prominent relative to Principal Display Panel area.",
-      evidence: `Visual ratio analysis: Bounding box height (~${fontHeightRatio}px) corresponds to estimated ≥ 2mm - 4mm height guidelines under Table 1. Note: Physical Vernier caliper verification required for statutory legal proceedings.`,
-      confidence: 0.85,
-      boundingBox: netQtyBbox || mrpBbox,
-      isEstimatedMeasurement: true,
-    });
+    if (!referenceBbox) {
+      // No localisation available -> we genuinely cannot assess font height.
+      results.push({
+        ruleId: "RULE-8-1-FONT-SIZE",
+        ruleNumber: "Rule 8",
+        fieldName: "font_height_estimation",
+        status: "REVIEW",
+        severity: "MEDIUM",
+        title: "Numeral Height Not Measurable (Rule 8)",
+        reason:
+          "No bounding box was detected for the net quantity or MRP declaration, so numeral height cannot be estimated from the image.",
+        evidence:
+          "Missing spatial localisation for net_quantity and mrp. A blank placeholder height must not be reported as a pass.",
+        confidence: 0.4,
+        boundingBox: null,
+        isEstimatedMeasurement: true,
+        suggestedAction:
+          "Capture a higher-resolution, in-focus image of the declaration panel, or verify numeral height with a Vernier caliper.",
+      });
+    } else {
+      const heightNorm = referenceBbox.y2 - referenceBbox.y1;
+      const heightPctOfImage = ((heightNorm / 1000) * 100).toFixed(2);
+      results.push({
+        ruleId: "RULE-8-1-FONT-SIZE",
+        ruleNumber: "Rule 8",
+        fieldName: "font_height_estimation",
+        status: "REVIEW",
+        severity: "MEDIUM",
+        title: "Estimated Numeral & Letter Height (Rule 8)",
+        reason:
+          "Declaration text occupies a measurable share of the panel height; relative prominence is plausible but a physical millimetre value cannot be derived from an image without a scale reference.",
+        evidence: `Normalised box height for '${sourceField}' is ${heightNorm}/1000 of the image axis (${heightPctOfImage}% of image height). Physical mm requires a Vernier caliper for statutory proceedings.`,
+        confidence: 0.6,
+        boundingBox: referenceBbox,
+        isEstimatedMeasurement: true,
+        suggestedAction:
+          "Verify numeral height with a Vernier caliper against Table 1 before issuing any statutory notice.",
+      });
+    }
 
     // 3. Principal Display Panel (PDP) Spatial Placement Analysis (Rule 7)
+    // Bounding boxes are normalised to 0-1000; 50/950 marks the outer 5% margin.
     const nameBbox = declarations.generic_name.bbox;
-    if (nameBbox && (nameBbox.y1 < 20 || nameBbox.y2 > 980)) {
+    if (nameBbox && (nameBbox.y1 < 50 || nameBbox.y2 > 950)) {
       results.push({
         ruleId: "RULE-7-1-PDP-PLACEMENT",
         ruleNumber: "Rule 7",

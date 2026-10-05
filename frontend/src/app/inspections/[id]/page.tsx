@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, use } from "react";
+import React, { useEffect, useState, use, useMemo } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { Card, CardHeader, CardBody, CardFooter } from "@/components/ui/Card";
@@ -202,6 +202,55 @@ export default function InspectionDetailPage({
     }
   };
 
+  const BOX_LABELS: Record<string, string> = {
+    generic_name: "Generic name",
+    net_quantity: "Net quantity",
+    mrp: "MRP",
+    date_of_manufacture: "Mfg date",
+    date_of_expiry: "Expiry",
+    manufacturer: "Manufacturer",
+    packer: "Packer",
+    consumer_care: "Consumer care",
+    country_of_origin: "Country of origin",
+  };
+
+  // Group normalized (0-1000) boxes by the package image they were read from.
+  // NOTE: this hook must stay ABOVE the loading/error early returns below, or the
+  // hook order changes between renders and React throws.
+  const declarations = scanData?.analysis?.declarations;
+  const boxesByImage: Record<number, any[]> = useMemo(() => {
+    const grouped: Record<number, any[]> = {};
+    for (const [field, decl] of Object.entries<any>(declarations ?? {})) {
+      if (!decl || typeof decl !== "object" || !decl.bbox) continue;
+      const { x1, y1, x2, y2 } = decl.bbox;
+      if ([x1, y1, x2, y2].some((v) => typeof v !== "number")) continue;
+      const imgIdx = typeof decl.image_index === "number" ? decl.image_index : 0;
+      (grouped[imgIdx] ??= []).push({
+        field,
+        label: BOX_LABELS[field] ?? field,
+        value: decl.value,
+        x1,
+        y1,
+        x2,
+        y2,
+      });
+    }
+    return grouped;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [declarations]);
+
+  const totalBoxes = useMemo(
+    () => Object.values(boxesByImage).reduce((a, list) => a + list.length, 0),
+    [boxesByImage],
+  );
+
+  const detectableFieldCount = useMemo(
+    () =>
+      Object.keys(declarations ?? {}).filter((k) => k !== "other_declarations")
+        .length,
+    [declarations],
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-screen bg-[#F8FAFC]">
@@ -257,6 +306,9 @@ export default function InspectionDetailPage({
   const preprocessedImages =
     scanData?.images?.filter((i: any) => i.imageType === "PREPROCESSED") || [];
 
+  const extraction = analysis?.extraction;
+  const ocrInfo = analysis?.ocr;
+
   return (
     <div className="flex min-h-screen bg-[#F8FAFC]">
       <Sidebar />
@@ -270,6 +322,36 @@ export default function InspectionDetailPage({
         />
 
         <main className="p-8 max-w-7xl w-full mx-auto space-y-8 flex-1">
+          {/* Evidence provenance banner - never let a fallback read as verified */}
+          {extraction?.degraded && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-900 space-y-1">
+                <p className="font-bold">
+                  Degraded extraction — this inspection was NOT verified by vision
+                  model.
+                </p>
+                <p>
+                  {extraction.reason ??
+                    "Vision extraction was unavailable; declarations were derived by regex from noisy OCR."}{" "}
+                  Treat all findings as indicative and re-capture the package before
+                  issuing any statutory notice.
+                </p>
+              </div>
+            </div>
+          )}
+          {(ocrInfo?.averageConfidence ?? 1) < 0.6 && !extraction?.degraded && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-900">
+                Low OCR legibility (mean confidence{" "}
+                {((ocrInfo?.averageConfidence ?? 0) * 100).toFixed(0)}%). Any
+                "missing declaration" finding below is flagged for officer review
+                rather than recorded as a violation, because a declaration cannot be
+                proven absent from an unreadable panel.
+              </p>
+            </div>
+          )}
           {/* Header Summary Banner */}
           <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
             <div>
@@ -340,85 +422,82 @@ export default function InspectionDetailPage({
               <Card>
                 <CardHeader
                   title="Packaging Evidence & Region Localization"
-                  description="Visual bounding boxes detected by computer vision and OCR pipeline"
+                  description={
+                    extraction?.engine === "gemini-vision"
+                      ? `Declaration regions localized by ${extraction.model} on ${extraction.imageCount} package image(s)`
+                      : "Declaration regions localized on the package images"
+                  }
                 />
                 <CardBody className="space-y-4">
                   <div className="bg-slate-900 rounded-xl p-4 flex items-center justify-center relative min-h-[380px] overflow-hidden">
-                    {/* Packaging Mock Display */}
-                   {/* <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-lg border border-slate-700 relative text-xs text-slate-800 space-y-3">
-                      <div className="border border-blue-500 bg-blue-500/10 p-1.5 rounded text-[11px] font-bold text-blue-900">
-                        {analysis?.declarations?.generic_name?.value ??
-                          "Not detected"}
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="border border-emerald-600 bg-emerald-600/10 p-1 rounded font-bold text-emerald-900">
-                          [Net Qty]{" "}
-                          {analysis?.declarations?.net_quantity?.value ??
-                            "Not detected"}
-                        </div>
-                        <div className="border border-emerald-600 bg-emerald-600/10 p-1 rounded font-bold text-emerald-900">
-                          [MRP] ₹
-                          {analysis?.declarations?.mrp?.value ?? "Not detected"}{" "}
-                          (Incl. of taxes)
-                        </div>
-                      </div>
-                      <div className="border border-slate-300 p-1 rounded text-[11px] text-slate-600">
-                        [Mfg Date]{" "}
-                        {analysis?.declarations?.date_of_manufacture?.value ??
-                          "Not detected"}
-                      </div>
-                      <div className="border border-slate-300 p-1 rounded text-[11px] text-slate-600">
-                        [Manufacturer]{" "}
-                        {analysis?.declarations?.manufacturer?.value ??
-                          "Not detected"}
-                      </div>
-                      <div className="border border-blue-400 bg-blue-400/10 p-1 rounded text-[10px] text-slate-700">
-                        [Consumer Care]{" "}
-                        {analysis?.declarations?.consumer_care?.value ??
-                          "Not detected"}
-                      </div>
-                      <div className="border border-slate-300 p-1 rounded text-[10px] text-slate-700 font-semibold">
-                        [Country of Origin]{" "}
-                        {analysis?.declarations?.country_of_origin?.value ??
-                          "Not detected"}
-                      </div>
-                    </div> */}
-
                     <div className="grid grid-cols-2 gap-4">
                       {originalImages.map((image: any, index: number) => (
                         <div
                           key={image.id}
                           className="bg-white rounded-lg border border-slate-200 overflow-hidden"
                         >
-                          <img
-                            src={image.url}
-                            alt={`Package evidence ${index + 1}`}
-                            loading="lazy"
-                            decoding="async"
-                            width={800}
-                            height={600}
-                            className="w-full h-64 object-contain bg-slate-100"
-                          />
+                          {/* Real normalised (0-1000) bounding boxes for this image */}
+                          <div className="relative w-full h-64 bg-slate-100">
+                            <img
+                              src={image.url}
+                              alt={`Package evidence ${index + 1}`}
+                              loading="lazy"
+                              decoding="async"
+                              width={800}
+                              height={600}
+                              className="w-full h-64 object-contain bg-slate-100"
+                            />
+                            {boxesByImage[index]?.map((b: any) => (
+                              <div
+                                key={`${b.field}-${b.label}`}
+                                title={`${b.label}: ${b.value ?? "not detected"}`}
+                                className="absolute border-2 border-emerald-400 rounded-[2px] shadow-[0_0_0_1px_rgba(0,0,0,0.4)]"
+                                style={{
+                                  left: `${b.x1 / 10}%`,
+                                  top: `${b.y1 / 10}%`,
+                                  width: `${(b.x2 - b.x1) / 10}%`,
+                                  height: `${(b.y2 - b.y1) / 10}%`,
+                                }}
+                              >
+                                <span className="absolute -top-5 left-0 text-[10px] font-semibold bg-emerald-400 text-slate-900 px-1 rounded whitespace-nowrap">
+                                  {b.label}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
 
                           <div className="px-3 py-2 text-xs text-slate-600 border-t">
                             Package Image {index + 1}
+                            {boxesByImage[index]?.length ? (
+                              <span className="ml-2 text-emerald-700 font-medium">
+                                {boxesByImage[index].length} region
+                                {boxesByImage[index].length > 1 ? "s" : ""} localized
+                              </span>
+                            ) : (
+                              <span className="ml-2 text-slate-400">
+                                no regions localized
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
-
-                    {/* <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-lg border border-slate-700 relative text-xs text-slate-800 space-y-3">
-                      <img
-                        src={originalImage?.url}
-                        alt="Uploaded packaging evidence"
-                        className="w-full rounded-lg"
-                      />
-                    </div> */}
                   </div>
 
-                  <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 px-1">
                     <span>✓ High-DPI CLAHE Preprocessing Applied</span>
-                    <span>Format: JPEG (1000x1000)</span>
+                    <span>
+                      {ocrInfo?.provider === "google-cloud-vision"
+                        ? "OCR: Google Cloud Vision"
+                        : ocrInfo?.provider === "tesseract"
+                          ? `OCR: Tesseract.js (mean confidence ${(
+                              (ocrInfo.averageConfidence ?? 0) * 100
+                            ).toFixed(0)}%)`
+                          : "OCR: unavailable"}
+                    </span>
+                    <span>
+                      {totalBoxes} of {detectableFieldCount} declarations localized
+                    </span>
                   </div>
                 </CardBody>
               </Card>
@@ -427,7 +506,13 @@ export default function InspectionDetailPage({
               <Card>
                 <CardHeader
                   title="Extracted Mandatory Declarations (Rule 6)"
-                  description="Structured parameters verified by Gemini Extraction Engine with Zod validation"
+                  description={
+                    extraction?.engine === "gemini-vision"
+                      ? `Verified by ${extraction.model} vision extraction with Zod validation`
+                      : extraction?.degraded
+                        ? `DEGRADED: ${extraction.reason ?? "vision extraction unavailable"} — values are OCR-regex estimates, not verified`
+                        : "Structured parameters validated against the declaration schema"
+                  }
                 />
                 <div className="divide-y divide-slate-100 text-xs">
                   <div className="p-4 flex items-center justify-between hover:bg-slate-50">
@@ -583,18 +668,31 @@ export default function InspectionDetailPage({
                 <CardBody className="space-y-3 text-xs">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {[
-                      { name: "Generic Name", key: "generic_name", rule: "Rule 7(1)", defaultStatus: "PASS" },
-                      { name: "Net Quantity", key: "net_quantity", rule: "Rule 7(2)", defaultStatus: "PASS" },
-                      { name: "MRP Declaration", key: "mrp", rule: "Rule 7(3)", defaultStatus: "PASS" },
-                      { name: "Manufacturer", key: "manufacturer", rule: "Rule 7(4)", defaultStatus: "PASS" },
-                      { name: "Consumer Care", key: "consumer_care", rule: "Rule 7(5)", defaultStatus: "REVIEW" },
-                      { name: "Country of Origin", key: "country_of_origin", rule: "Rule 7(6)", defaultStatus: "PASS" },
+                      { name: "Generic Name", key: "generic_name", rule: "Rule 7(1)", ruleId: "RULE-7-1-PLACEMENT" },
+                      { name: "Net Quantity", key: "net_quantity", rule: "Rule 7(2)", ruleId: "RULE-7-2-PLACEMENT" },
+                      { name: "MRP Declaration", key: "mrp", rule: "Rule 7(3)", ruleId: "RULE-7-3-PLACEMENT" },
+                      { name: "Manufacturer", key: "manufacturer", rule: "Rule 7(4)", ruleId: "RULE-7-4-PLACEMENT" },
+                      { name: "Consumer Care", key: "consumer_care", rule: "Rule 7(5)", ruleId: "RULE-7-5-PLACEMENT" },
+                      { name: "Country of Origin", key: "country_of_origin", rule: "Rule 7(6)", ruleId: "RULE-7-6-PLACEMENT" },
                     ].map((item) => {
                       const decl = (analysis?.declarations as any)?.[item.key];
-                      const check = analysis?.passedChecks?.find((c: any) => c.fieldName === item.key || c.ruleId?.includes("PLACEMENT")) ||
-                                    analysis?.reviewChecks?.find((c: any) => c.fieldName === item.key);
-                      const status = decl?.value ? (decl.bbox ? "PASS" : "REVIEW") : "NOT DETECTED";
+                      // Prefer the engine's deterministic verdict over client guesswork.
+                      const engineCheck =
+                        analysis?.passedChecks?.find((c: any) => c.ruleId === item.ruleId) ||
+                        analysis?.reviewChecks?.find((c: any) => c.ruleId === item.ruleId) ||
+                        analysis?.violations?.find((c: any) => c.ruleId === item.ruleId);
+                      const status = engineCheck?.status
+                        ? engineCheck.status
+                        : decl?.value
+                          ? "PASS"
+                          : "NOT DETECTED";
                       const statusColor = status === "PASS" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : status === "REVIEW" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-700 border-red-200";
+                      const label =
+                        status === "PASS"
+                          ? "PASS"
+                          : status === "FAIL"
+                            ? "NOT DETECTED"
+                            : "REVIEW";
 
                       return (
                         <div key={item.key} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
@@ -603,7 +701,7 @@ export default function InspectionDetailPage({
                             <div className="text-[11px] text-slate-500">{item.rule} • PDP Region</div>
                           </div>
                           <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md border ${statusColor}`}>
-                            {status}
+                            {label}
                           </span>
                         </div>
                       );
@@ -616,32 +714,63 @@ export default function InspectionDetailPage({
               <Card>
                 <CardHeader
                   title="Readability & Font Size Validation"
-                  description="Prominence, contrast, and minimum numeral font height measurement under Rules 8 & 9"
+                  description="Legibility, contrast and numeral height under Rules 8 & 9, as measured by the rule engine"
                 />
                 <CardBody className="space-y-3 text-xs">
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800">[RULE-9-1-READABILITY] Label Legibility & Contrast</span>
-                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold rounded">
-                        PASS
-                      </span>
-                    </div>
-                    <p className="text-slate-600 text-[11px]">
-                      Mandatory declarations are printed in prominent high-contrast lettering against background packaging.
-                    </p>
-                  </div>
+                  {(["RULE-9-1-READABILITY", "RULE-8-1-FONT-SIZE"] as const).map(
+                    (ruleId) => {
+                      const check =
+                        analysis?.passedChecks?.find(
+                          (c: any) => c.ruleId === ruleId,
+                        ) ||
+                        analysis?.reviewChecks?.find(
+                          (c: any) => c.ruleId === ruleId,
+                        ) ||
+                        analysis?.violations?.find(
+                          (c: any) => c.ruleId === ruleId,
+                        );
 
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-800">[RULE-8-1-FONT-SIZE] Minimum Numeral Height</span>
-                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold rounded">
-                        PASS (Estimated ~3.2 mm)
-                      </span>
-                    </div>
-                    <p className="text-slate-600 text-[11px]">
-                      Measured numeral font height satisfies Rule 8 table requirement (&gt; 3mm height for net quantity/volume).
-                    </p>
-                  </div>
+                      const status = check?.status ?? "REVIEW";
+                      const tone =
+                        status === "PASS"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : status === "FAIL"
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200";
+
+                      return (
+                        <div
+                          key={ruleId}
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-slate-800">
+                              {ruleId === "RULE-9-1-READABILITY"
+                                ? "[RULE-9-1-READABILITY] Label Legibility & Contrast"
+                                : "[RULE-8-1-FONT-SIZE] Minimum Numeral Height"}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 border font-bold rounded ${tone}`}
+                            >
+                              {status}
+                              {check?.isEstimatedMeasurement
+                                ? " (estimated)"
+                                : ""}
+                            </span>
+                          </div>
+                          <p className="text-slate-600 text-[11px]">
+                            {check?.reason ??
+                              "Not evaluated for this scan."}
+                          </p>
+                          {check?.evidence && (
+                            <p className="text-slate-400 text-[10px]">
+                              {check.evidence}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    },
+                  )}
                 </CardBody>
               </Card>
             </div>

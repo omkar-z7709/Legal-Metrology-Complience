@@ -1,0 +1,7 @@
+Add this entry to mainNav in frontend/src/components/layout/Sidebar.tsx, immediately after New Inspection:
+
+{ label: "Live Lot Inspection", href: "/inspections/live", icon: Video, badge: "Fast" },
+
+Also add Video to the lucide-react import list:
+
+Video,
