@@ -13,6 +13,7 @@
     "test:extraction": "tsx src/scripts/test-extraction.ts",
     "test:db": "tsx src/scripts/test-db.ts",
     "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
