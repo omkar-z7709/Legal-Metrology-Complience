@@ -26,7 +26,7 @@ export class PresenceValidator implements IValidator {
         title: "Manufacturer / Packer Identification",
         reason: "Valid manufacturer/packer details detected on commodity label.",
         evidence: declarations.manufacturer.source_text || declarations.packer.source_text || "Found identity declaration",
-        confidence: declarations.manufacturer.confidence || 0.95,
+        confidence: declarations.manufacturer.confidence ?? 0.95,
         boundingBox: declarations.manufacturer.bbox,
       });
     } else {
@@ -40,6 +40,7 @@ export class PresenceValidator implements IValidator {
         reason: "Mandatory name and physical address of manufacturer or packer was not detected on the package label.",
         evidence: "No manufacturer or packer name detected in primary or secondary panels.",
         confidence: 0.94,
+        absenceBased: true,
         suggestedAction: "Issue notice under Section 36 of Legal Metrology Act, 2009 for failure to disclose manufacturer identity.",
       });
     }
@@ -55,7 +56,7 @@ export class PresenceValidator implements IValidator {
         title: "Generic / Common Commodity Name",
         reason: "Generic or common name of commodity is clearly declared.",
         evidence: declarations.generic_name.source_text || declarations.generic_name.value,
-        confidence: declarations.generic_name.confidence || 0.95,
+        confidence: declarations.generic_name.confidence ?? 0.95,
       });
     } else {
       results.push({
@@ -82,7 +83,7 @@ export class PresenceValidator implements IValidator {
         title: "Country of Origin Declaration",
         reason: `Country of origin explicitly declared as '${declarations.country_of_origin.value}'.`,
         evidence: declarations.country_of_origin.source_text || `Origin: ${declarations.country_of_origin.value}`,
-        confidence: declarations.country_of_origin.confidence || 0.95,
+        confidence: declarations.country_of_origin.confidence ?? 0.95,
       });
     } else {
       results.push({
@@ -95,6 +96,7 @@ export class PresenceValidator implements IValidator {
         reason: "Mandatory Country of Origin declaration required under 2017 Amendment is absent.",
         evidence: "No 'Country of Origin' or 'Made in' statement detected on label.",
         confidence: 0.92,
+        absenceBased: true,
         suggestedAction: "Require manufacturer to substantiate Country of Origin declaration on Principal Display Panel.",
       });
     }
@@ -111,7 +113,7 @@ export class PresenceValidator implements IValidator {
         title: "Consumer Care Contact Information",
         reason: "Consumer grievance contact details (phone/email/address) are provided.",
         evidence: declarations.consumer_care.source_text || declarations.consumer_care.value || "",
-        confidence: declarations.consumer_care.confidence || 0.93,
+        confidence: declarations.consumer_care.confidence ?? 0.93,
       });
     } else {
       results.push({
@@ -124,6 +126,7 @@ export class PresenceValidator implements IValidator {
         reason: "Mandatory telephone number, email, or physical address for consumer grievance was not found.",
         evidence: "No customer care helpline or contact email found on package.",
         confidence: 0.95,
+        absenceBased: true,
         suggestedAction: "Flag violation under Rule 6(1)(f) and issue inspection notice.",
       });
     }

@@ -24,6 +24,7 @@ export class DateValidator implements IValidator {
         reason: "Mandatory Month and Year of Manufacture/Packing is absent on the label.",
         evidence: "No Mfg or Packing date found in text extraction.",
         confidence: 0.94,
+        absenceBased: true,
         suggestedAction: "Flag violation under Rule 6(1)(d) of Legal Metrology (Packaged Commodities) Rules.",
       });
       return results;
@@ -41,7 +42,7 @@ export class DateValidator implements IValidator {
         title: "Manufacture Date Declaration Compliant",
         reason: `Valid month and year declared as '${date.value}'.`,
         evidence: date.source_text || date.value,
-        confidence: date.confidence || 0.93,
+        confidence: date.confidence ?? 0.93,
         boundingBox: date.bbox,
       });
     } else {

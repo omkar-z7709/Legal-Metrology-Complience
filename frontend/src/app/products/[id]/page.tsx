@@ -56,8 +56,6 @@ export default function ProductHistoryPage({ params }: { params: Promise<{ id: s
       scanNumber: "INS-2026-881921",
       createdAt: "2026-08-26T14:30:00.000Z",
       complianceStatus: "COMPLIANT",
-      complianceScore: "100.00",
-      reviewStatus: "ACCEPTED",
       notes: "Packager corrected MRP tax inclusive statement and added consumer grievance email.",
     },
     {
@@ -65,8 +63,6 @@ export default function ProductHistoryPage({ params }: { params: Promise<{ id: s
       scanNumber: "INS-2026-771829",
       createdAt: "2026-07-15T11:20:00.000Z",
       complianceStatus: "NON_COMPLIANT",
-      complianceScore: "65.00",
-      reviewStatus: "REJECTED",
       notes: "Flagged notice issued for missing 'Inclusive of all taxes' declaration.",
     },
     {
@@ -74,97 +70,94 @@ export default function ProductHistoryPage({ params }: { params: Promise<{ id: s
       scanNumber: "INS-2026-661738",
       createdAt: "2026-05-10T09:45:00.000Z",
       complianceStatus: "COMPLIANT",
-      complianceScore: "95.00",
-      reviewStatus: "ACCEPTED",
       notes: "Baseline inspection passed.",
     },
   ];
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC]">
+    <div className="flex min-h-screen bg-[var(--bg-app)]">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           breadcrumbs={[
-            { label: "Products Registry", href: "/products" },
+            { label: "Commodities", href: "/products" },
             { label: product.name },
           ]}
         />
 
-        <main className="p-8 max-w-6xl w-full mx-auto space-y-6 flex-1">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-            <div className="flex items-center gap-3">
-              <Link href="/products">
-                <Button variant="secondary" size="sm" icon={<ArrowLeft className="w-4 h-4" />}>
+        <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-6 p-4 sm:p-6 xl:p-8">
+          <header className="flex flex-col gap-4 border-b border-slate-300 pb-5 md:flex-row md:items-end md:justify-between">
+            <div className="flex items-start gap-3">
+              <Link href="/products" className="mt-1 shrink-0">
+                <Button variant="secondary" size="sm" icon={<ArrowLeft className="h-4 w-4" aria-hidden="true" />}>
                   Back
                 </Button>
               </Link>
               <div>
-                <h1 className="text-2xl font-bold text-[#12304A] tracking-tight">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-800">Commodity Timeline</p>
+                <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-[#12304A] sm:text-[30px]">
                   {product.name}
                 </h1>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Longitudinal Regulatory History • {inspectionHistory.length} Inspection Audits Logged
+                <p className="mt-1 text-sm text-slate-600">
+                  {inspectionHistory.length} inspection records
                 </p>
               </div>
             </div>
-          </div>
+          </header>
 
-          {/* Product Profile Card */}
           <Card>
-            <CardBody className="p-6 grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+            <CardBody className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <span className="text-slate-400 font-semibold uppercase text-[10px]">Brand / Trademark</span>
-                <div className="text-slate-800 font-semibold text-sm mt-0.5">{product.brand || "N/A"}</div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Brand / Trademark</span>
+                <div className="mt-1 text-sm font-semibold text-slate-800">{product.brand || "N/A"}</div>
               </div>
               <div>
-                <span className="text-slate-400 font-semibold uppercase text-[10px]">Statutory Category</span>
-                <div className="text-slate-800 font-semibold text-sm mt-0.5">{product.category}</div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Category</span>
+                <div className="mt-1 text-sm font-semibold text-slate-800">{product.category}</div>
               </div>
               <div>
-                <span className="text-slate-400 font-semibold uppercase text-[10px]">Commodity Nature</span>
-                <div className="text-slate-800 font-semibold text-sm mt-0.5">{product.commodityType || "Solid/Liquid"}</div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Nature</span>
+                <div className="mt-1 text-sm font-semibold text-slate-800">{product.commodityType || "Solid/Liquid"}</div>
               </div>
               <div>
-                <span className="text-slate-400 font-semibold uppercase text-[10px]">Manufacturer</span>
-                <div className="text-slate-800 font-medium text-xs mt-0.5">{product.manufacturerName || "Declared on Label"}</div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Manufacturer</span>
+                <div className="mt-1 text-sm font-medium text-slate-800">{product.manufacturerName || "Declared on Label"}</div>
               </div>
             </CardBody>
           </Card>
 
-          {/* Longitudinal Timeline */}
           <div className="space-y-4">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-              <History className="w-4 h-4 text-[#12304A]" /> Longitudinal Inspection Trail (Module 16)
+            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-slate-700">
+              <History className="h-4 w-4 text-[#12304A]" aria-hidden="true" /> Inspection record history
             </h2>
 
-            <div className="relative border-l-2 border-slate-200 ml-4 pl-6 space-y-6">
+            <div className="ml-4 space-y-6 border-l-2 border-slate-200 pl-6 relative">
               {inspectionHistory.map((scan: any, idx: number) => (
                 <div key={scan.id || idx} className="relative">
-                  {/* Timeline Dot */}
                   <div
-                    className={`absolute -left-[31px] top-1.5 w-4 h-4 rounded-full border-2 border-white shadow-xs ${
+                    className={`absolute -left-[31px] top-1.5 h-4 w-4 rounded-full border-2 border-slate-100 shadow-sm ${
                       scan.complianceStatus === "COMPLIANT"
                         ? "bg-emerald-500"
                         : scan.complianceStatus === "NON_COMPLIANT"
                         ? "bg-red-500"
                         : "bg-amber-500"
                     }`}
+                    aria-hidden="true"
                   />
 
-                  <Card className="hover:shadow-md transition-shadow">
+                  <Card>
                     <CardHeader
                       title={
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-xs font-semibold px-2 py-0.5 bg-slate-100 rounded text-slate-800">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 font-mono text-xs font-semibold text-slate-800">
                             {scan.scanNumber}
                           </span>
                           <StatusBadge status={scan.complianceStatus as StatusType} size="sm" />
                         </div>
                       }
                       action={
-                        <span className="text-xs text-slate-500 flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
+                        <span className="flex items-center gap-1 text-xs text-slate-500">
+                          <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
                           {new Date(scan.createdAt).toLocaleDateString("en-IN", {
                             day: "numeric",
                             month: "short",
@@ -173,21 +166,17 @@ export default function ProductHistoryPage({ params }: { params: Promise<{ id: s
                         </span>
                       }
                     />
-                    <CardBody className="space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-slate-500">Compliance Score: <strong>{scan.complianceScore || 100}%</strong></span>
-                        <span className="text-slate-500">Officer Decision: <strong className="text-slate-800">{scan.reviewStatus || "ACCEPTED"}</strong></span>
-                      </div>
-                      {scan.notes && (
-                        <div className="p-2.5 bg-slate-50 border border-slate-100 rounded text-slate-600 text-[11px]">
-                          <strong>Inspector Observation:</strong> {scan.notes}
+                    {scan.notes && (
+                      <CardBody className="border-t border-slate-100">
+                        <div className="rounded bg-slate-50 p-3 text-sm text-slate-700">
+                          <strong className="font-medium text-slate-900">Observation:</strong> {scan.notes}
                         </div>
-                      )}
-                    </CardBody>
-                    <CardFooter>
+                      </CardBody>
+                    )}
+                    <CardFooter className="bg-slate-50/50">
                       <Link href={`/inspections/${scan.id}`} className="ml-auto">
-                        <Button variant="secondary" size="sm" icon={<Eye className="w-3.5 h-3.5" />}>
-                          View Full Evidence & Checks
+                        <Button variant="secondary" size="sm" icon={<Eye className="h-3.5 w-3.5" aria-hidden="true" />}>
+                          View record
                         </Button>
                       </Link>
                     </CardFooter>

@@ -16,65 +16,74 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC]">
+    <div className="flex min-h-screen bg-[var(--bg-app)]">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar breadcrumbs={[{ label: "Compliance Analytics" }]} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar breadcrumbs={[{ label: "Analytics" }]} />
 
-        <main className="p-8 max-w-7xl w-full mx-auto space-y-6 flex-1">
-          <div className="pb-2 border-b border-slate-200">
-            <h1 className="text-2xl font-bold text-[#12304A] tracking-tight">
-              Compliance Intelligence & Enforcement Analytics
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Cross-category compliance metrics, violation frequency distributions, and longitudinal trends.
-            </p>
+        <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-6 p-4 sm:p-6 xl:p-8">
+          <header className="flex flex-col gap-4 border-b border-slate-300 pb-5 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-800">MySS / Enforcement operations</p>
+              <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-[#12304A] sm:text-[30px]">
+                Analytics
+              </h1>
+              <p className="mt-1 text-sm text-slate-600">
+                Cross-category compliance metrics and violation frequency distributions.
+              </p>
+            </div>
+          </header>
+
+          <div
+            role="status"
+            className="border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+          >
+            <strong>Note:</strong> Currently displaying sample operational data for demonstration. Live metrics will appear once backend aggregations are fully connected.
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <Card>
-              <CardBody className="p-6 text-center space-y-2">
-                <span className="text-xs text-slate-500 font-semibold uppercase">Overall Screening Pass Rate</span>
-                <div className="text-4xl font-extrabold text-emerald-700">65.9%</div>
-                <p className="text-xs text-slate-400">Based on 1,248 total inspections</p>
+              <CardBody className="p-6 text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Overall Assessment Pass Rate</span>
+                <div className="mt-2 text-[40px] font-medium leading-none text-emerald-800">65.9%</div>
+                <p className="mt-2 text-xs text-slate-500">Based on 1,248 total sample records</p>
               </CardBody>
             </Card>
 
             <Card>
-              <CardBody className="p-6 text-center space-y-2">
-                <span className="text-xs text-slate-500 font-semibold uppercase">Most Frequent Infraction</span>
-                <div className="text-xl font-bold text-red-700">Missing Mandatory Declaration</div>
-                <p className="text-xs text-slate-400">Rule 6(1)(f) Consumer Care & (g) Origin</p>
+              <CardBody className="flex h-full flex-col justify-center p-6 text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Most Frequent Infraction</span>
+                <div className="mt-2 text-xl font-medium leading-tight text-red-800">Missing Mandatory Declaration</div>
+                <p className="mt-2 text-xs text-slate-500">Rule 6(1)(f) Consumer Care & (g) Origin</p>
               </CardBody>
             </Card>
 
             <Card>
-              <CardBody className="p-6 text-center space-y-2">
-                <span className="text-xs text-slate-500 font-semibold uppercase">Officer Overrides</span>
-                <div className="text-4xl font-extrabold text-[#12304A]">4.2%</div>
-                <p className="text-xs text-slate-400">52 manual determinations logged</p>
+              <CardBody className="p-6 text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Officer Overrides</span>
+                <div className="mt-2 text-[40px] font-medium leading-none text-[#12304A]">4.2%</div>
+                <p className="mt-2 text-xs text-slate-500">52 manual determinations logged</p>
               </CardBody>
             </Card>
           </div>
 
-          {/* Category Performance Breakdown */}
           <Card>
             <CardHeader
-              title="Commodity Category Compliance Rates"
-              description="Breakdown of inspection pass vs violation rates by product sector"
+              title="Commodity Category Initial Assessment"
+              description="Breakdown of automated assessment pass vs violation rates by product sector (sample dataset)"
             />
-            <CardBody className="space-y-5">
+            <CardBody className="space-y-4">
               {categoryStats.map((item, idx) => (
-                <div key={idx} className="space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
+                <div key={idx} className="space-y-2">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between text-xs">
                     <span className="font-semibold text-slate-800">{item.category}</span>
-                    <span className="text-slate-500 font-medium">
+                    <span className="text-slate-600">
                       {item.compliant} Pass / {item.nonCompliant} Fail ({item.rate}% Compliant)
                     </span>
                   </div>
-                  <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex">
-                    <div className="h-full bg-emerald-600 rounded-l-full" style={{ width: `${item.rate}%` }} />
-                    <div className="h-full bg-red-500 rounded-r-full" style={{ width: `${100 - item.rate}%` }} />
+                  <div className="flex h-2 w-full overflow-hidden rounded bg-slate-100">
+                    <div className="h-full bg-emerald-600" style={{ width: `${item.rate}%` }} />
+                    <div className="h-full bg-red-600" style={{ width: `${100 - item.rate}%` }} />
                   </div>
                 </div>
               ))}

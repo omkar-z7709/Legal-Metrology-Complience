@@ -6,11 +6,14 @@ import { ProductClassifier } from "../classification/classifier.service.js";
 import {
   ComplianceDecisionEngine,
   ComplianceDecision,
+  ComplianceStageTiming,
 } from "../engine/decision.engine.js";
 import { OcrResult } from "../ocr/ocr.interface.js";
 import { PreprocessService } from "../preprocess.service.js";
 import fs from "fs/promises";
 import path from "path";
+import { globalTimings, ms } from "../../utils/timing.js";
+import { performance } from "perf_hooks";
 
 export class InspectionPipelineService {
   /**
@@ -21,8 +24,15 @@ export class InspectionPipelineService {
   ): Promise<ComplianceDecision & { scanId: string; scanNumber: string }> {
     console.log(`[PIPELINE] START scanId=${scanId}`);
 
+    // TEMP TIMING: start the clock BEFORE the first DB read. Previously `totalStart`
+    // was assigned after getScan(), so pipeline_db_fetch was excluded from its own span.
+    const totalStart = performance.now();
+    const timing = globalTimings.get(scanId) || { stages: {} };
+
     // 1. Fetch Scan & Images
+    const dbFetchStart = performance.now();
     const scan = await DBRepo.getScan(scanId);
+    const dbFetchEnd = performance.now();
     if (!scan) throw new Error(`Scan with ID '${scanId}' not found.`);
 
     // Idempotency check: if scan is already COMPLETED with valid analysis, return persisted analysis immediately
@@ -53,26 +63,46 @@ export class InspectionPipelineService {
       throw new Error("No package images found for this scan.");
     }
 
-    const totalStart = Date.now();
     console.log(
       `[OCR] Processing ${targetImages.length} package image(s) (${preprocessedImages.length} preprocessed, ${originalImages.length} original) for scan ${scan.scanNumber}`,
     );
 
     // 2. OCR Stage
     await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "OCR" });
-    const ocrStart = Date.now();
+
+    timing.stages['pipeline_db_fetch'] = { start: dbFetchStart, end: dbFetchEnd, concurrency: 'Sequential' };
+    const ocrStart = performance.now();
+    timing.stages['ocr_total'] = { start: ocrStart, concurrency: 'Parallel', images: [] };
+
     const ocrResults = await Promise.all(
       targetImages.map(async (image, idx) => {
         console.log(
           `[OCR] Processing image ${idx + 1}/${targetImages.length} (${image.imageType}): ${image.fileName}`,
         );
+        
+        const reqStart = performance.now();
         const imageBuffer = await StorageService.downloadFile(image.storagePath);
+        const reqEnd = performance.now();
+        const prepImageStart = performance.now();
+
         let bufferToOcr = imageBuffer;
         if (image.imageType === "ORIGINAL" && preprocessedImages.length === 0) {
           const prep = await PreprocessService.preprocess(imageBuffer);
           bufferToOcr = prep.processedBuffer;
         }
-        return OcrService.extract(bufferToOcr);
+        
+        const prepImageEnd = performance.now();
+        const ocrExtractStart = performance.now();
+        const res = await OcrService.extract(bufferToOcr);
+        const ocrExtractEnd = performance.now();
+        timing.stages['ocr_total'].images.push({
+           imageName: image.fileName,
+           storageReadMs: reqEnd - reqStart,
+           prepMs: prepImageEnd - prepImageStart,
+           ocrMs: ocrExtractEnd - ocrExtractStart
+        });
+        return res;
+
       }),
     );
 
@@ -104,7 +134,8 @@ export class InspectionPipelineService {
         0,
       ),
     };
-    const ocrDurationMs = Date.now() - ocrStart;
+    const ocrDurationMs = performance.now() - ocrStart;
+    timing.stages['ocr_total'].end = performance.now();
 
     console.log(
       `[OCR] Completed OCR across all ${ocrResults.length} image(s). Combined text length: ${combinedOcrText.length} chars.`,
@@ -116,20 +147,24 @@ export class InspectionPipelineService {
     console.log(
       `[GEMINI] Invoking Gemini structured extraction on combined package text...`,
     );
-    const geminiStart = Date.now();
+    const geminiStart = performance.now();
+    timing.stages['gemini_extraction'] = { start: geminiStart };
     const declarations = await GeminiExtractor.extractDeclarations(ocrResult);
-    const geminiDurationMs = Date.now() - geminiStart;
+    const geminiDurationMs = performance.now() - geminiStart;
+    timing.stages['gemini_extraction'].end = performance.now();
     console.log(`[PERF] Gemini: ${geminiDurationMs} ms`);
 
     // 4. Product Classification Stage
     await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "CLASSIFICATION" });
     console.log(`[CLASSIFICATION] Determining commodity classification...`);
-    const classStart = Date.now();
+    const classStart = performance.now();
+    timing.stages['classification'] = { start: classStart };
     const classification = ProductClassifier.classify(
       declarations,
       ocrResult.rawText,
     );
-    const classDurationMs = Date.now() - classStart;
+    const classDurationMs = performance.now() - classStart;
+    timing.stages['classification'].end = performance.now();
     console.log(`[PERF] Classification: ${classDurationMs} ms`);
 
     // 5. Compliance & RAG Stage
@@ -137,14 +172,28 @@ export class InspectionPipelineService {
     console.log(
       `[COMPLIANCE] Executing deterministic rule validation and RAG grounding for '${classification.category}'...`,
     );
+    
+    timing.stages['rule_evaluation'] = { start: performance.now() };
+    const complianceTiming: ComplianceStageTiming = {};
     const decision = await ComplianceDecisionEngine.evaluate(
       declarations,
       classification,
       ocrResult.rawText,
+      complianceTiming,
+      {
+        provider: ocrResult.provider,
+        averageConfidence: ocrResult.averageConfidence,
+        textLength: ocrResult.rawText.length,
+        imageCount: targetImages.length,
+      },
     );
 
     // 6. Update Product Category in DB
-    const dbStart = Date.now();
+    
+    timing.stages['rule_evaluation'].end = performance.now();
+    const dbStart = performance.now();
+    timing.stages['database_writes'] = { start: dbStart };
+
     await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "SAVING" });
     if (scan.productId) {
       await DBRepo.updateProduct(scan.productId, {
@@ -235,10 +284,100 @@ export class InspectionPipelineService {
         ...decision,
       },
     });
-    const dbDurationMs = Date.now() - dbStart;
+    
+    const dbDurationMs = performance.now() - dbStart;
+    timing.stages['database_writes'].end = performance.now();
+
     console.log(`[PERF] Persistence: ${dbDurationMs} ms`);
 
-    const totalDurationMs = Date.now() - totalStart;
+    
+    const totalDurationMs = performance.now() - totalStart;
+    timing.pipelineTotalEnd = performance.now();
+
+    // TEMP TIMING: serializable pipeline report consumed by the frontend debug view.
+    const s = timing.stages;
+    const ocrStage = s['ocr_total'];
+    timing.pipelineReport = {
+      imageCount: targetImages.length,
+      ocrConcurrency: 'Parallel',
+      stages: {
+        pipelineDbFetchMs: ms(s['pipeline_db_fetch'].start, s['pipeline_db_fetch'].end),
+        statusUpdateToOcrMs: ms(s['pipeline_db_fetch'].end, ocrStart),
+        ocrMs: ms(ocrStart, ocrStage.end),
+        statusUpdateToExtractionMs: ms(ocrStage.end, geminiStart),
+        geminiMs: ms(geminiStart, s['gemini_extraction'].end),
+        statusUpdateToClassificationMs: ms(s['gemini_extraction'].end, classStart),
+        classificationMs: ms(classStart, s['classification'].end),
+        statusUpdateToComplianceMs: ms(s['classification'].end, s['rule_evaluation'].start),
+        complianceStageTotalMs: ms(s['rule_evaluation'].start, s['rule_evaluation'].end),
+        ragMs: complianceTiming.ragMs ?? 0,
+        complianceRulesMs: complianceTiming.complianceMs ?? 0,
+        statusUpdateToSavingMs: ms(s['rule_evaluation'].end, dbStart),
+        databaseWritesMs: ms(dbStart, s['database_writes'].end),
+      },
+      ocrImages: ocrStage.images.map((img: any) => ({
+        imageName: img.imageName,
+        storageReadMs: Math.round(img.storageReadMs),
+        preprocessMs: Math.round(img.prepMs),
+        ocrExtractorMs: Math.round(img.ocrMs),
+      })),
+      // Pipeline entry is measured from processScan(), which is entered AFTER the
+      // upload response was sent. The gap between the two is reported by the frontend.
+      pipelineTotalMs: Math.round(totalDurationMs),
+      uploadToPipelineEndMs: timing.requestStart ? Math.round(performance.now() - timing.requestStart) : null,
+    };
+    globalTimings.set(scanId, timing);
+
+    // Print Timing Summary!
+    console.log("\n\n=========================================");
+    console.log("          INSPECTION TIMING (scan: "+ scan.scanNumber + ")");
+    console.log("=========================================");
+    const t = globalTimings.get(scanId) || timing;
+    const reqStart = t.requestStart || performance.now();
+    
+    console.log(`Total Time (Upload to end of Pipeline): ${((performance.now() - reqStart) / 1000).toFixed(2)}s`);
+    console.log(`Upload/Parse Time: ${((t.uploadEnd - t.uploadStart) / 1000).toFixed(2)}s`);
+    
+    if (t.stages['ocr_total']) {
+      const ocrData = t.stages['ocr_total'];
+      console.log(`Pipeline DB read: ${((t.stages['pipeline_db_fetch'].end - t.stages['pipeline_db_fetch'].start) / 1000).toFixed(2)}s`);
+      console.log(`OCR Total (Parallel): ${((ocrData.end - ocrData.start) / 1000).toFixed(2)}s`);
+      ocrData.images.forEach((img: any, i: number) => {
+         console.log(`  Image ${i+1} (${img.imageName}):`);
+         console.log(`    Storage read: ${(img.storageReadMs / 1000).toFixed(2)}s`);
+         if (img.prepMs > 1) console.log(`    Preprocessing: ${(img.prepMs / 1000).toFixed(2)}s`);
+         console.log(`    OCR Extractor (Google Vision / fallback): ${(img.ocrMs / 1000).toFixed(2)}s`);
+      });
+    }
+
+    if (t.stages['gemini_extraction']) {
+      console.log(`Extraction (Gemini): ${((t.stages['gemini_extraction'].end - t.stages['gemini_extraction'].start) / 1000).toFixed(2)}s`);
+    }
+    if (t.stages['classification']) {
+      console.log(`Classification: ${((t.stages['classification'].end - t.stages['classification'].start) / 1000).toFixed(2)}s`);
+    }
+    if (t.stages['rule_evaluation']) {
+      console.log(`Rule evaluation (DB reads + logic): ${((t.stages['rule_evaluation'].end - t.stages['rule_evaluation'].start) / 1000).toFixed(2)}s`);
+    }
+    if (t.stages['database_writes']) {
+      console.log(`Database Writes (results): ${((t.stages['database_writes'].end - t.stages['database_writes'].start) / 1000).toFixed(2)}s`);
+    }
+    
+    // Concurrency Diagram (pseudo)
+    console.log("\nConcurrency:");
+    if (t.stages['ocr_total'] && t.stages['ocr_total'].images.length > 1) {
+       console.log("Parallel:");
+       t.stages['ocr_total'].images.forEach((img: any, i: number) => {
+          if (i === 0) console.log(`image${i+1} ─┐`);
+          else if (i === t.stages['ocr_total'].images.length -1 ) console.log(`image${i+1} ─┘  => Combine`);
+          else console.log(`image${i+1} ─┤`);
+       });
+    } else {
+       console.log("Sequential: image1 => processing");
+    }
+
+    console.log("=========================================\n\n");
+
     console.log(`[PERF] TOTAL: ${totalDurationMs} ms`);
 
     console.log(

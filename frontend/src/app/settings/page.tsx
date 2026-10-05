@@ -20,49 +20,52 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC]">
+    <div className="flex min-h-screen bg-[var(--bg-app)]">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar breadcrumbs={[{ label: "System & Inspection Settings" }]} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar breadcrumbs={[{ label: "System Setup" }]} />
 
-        <main className="p-8 max-w-4xl w-full mx-auto space-y-6 flex-1">
-          <div className="pb-2 border-b border-slate-200">
-            <h1 className="text-2xl font-bold text-[#12304A] tracking-tight">
-              Inspection Engine Configuration
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Configure OCR providers, LLM extraction models, and regulatory threshold parameters (Module 18).
-            </p>
-          </div>
+        <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-6 p-4 sm:p-6 xl:p-8">
+          <header className="flex flex-col gap-4 border-b border-slate-300 pb-5">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-800">MySS / Configuration</p>
+              <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-[#12304A] sm:text-[30px]">
+                Engine Settings
+              </h1>
+              <p className="mt-1 text-sm text-slate-600">
+                Configure OCR providers, language models, and regulatory threshold parameters.
+              </p>
+            </div>
+          </header>
 
-          <form onSubmit={handleSave} className="space-y-6">
+          <form onSubmit={handleSave} className="space-y-6 max-w-4xl">
             <Card>
               <CardHeader
                 title="Vision & Extraction Pipeline"
                 description="Select default OCR service and generative structured declaration parser"
               />
-              <CardBody className="space-y-4 text-xs">
+              <CardBody className="space-y-4 text-sm">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Primary OCR Service</label>
+                  <label className="mb-1 block font-semibold text-slate-800">Primary OCR Service</label>
                   <select
                     value={ocrEngine}
                     onChange={(e) => setOcrEngine(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
+                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm focus:border-[#12304A] focus:outline-none focus:ring-1 focus:ring-[#12304A]"
                   >
                     <option value="google-vision">Google Cloud Vision SDK (@google-cloud/vision)</option>
                     <option value="tesseract">Tesseract.js (Offline / Sandbox Fallback)</option>
                   </select>
-                  <p className="text-[11px] text-slate-500 mt-1">
+                  <p className="mt-1 text-xs text-slate-500">
                     System automatically falls back to Tesseract.js when external cloud quotas or credentials are unconfigured.
                   </p>
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Gemini Extraction Model</label>
+                  <label className="mb-1 block font-semibold text-slate-800">Gemini Extraction Model</label>
                   <select
                     value={geminiModel}
                     onChange={(e) => setGeminiModel(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800"
+                    className="w-full rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 shadow-sm focus:border-[#12304A] focus:outline-none focus:ring-1 focus:ring-[#12304A]"
                   >
                     <option value="gemini-3.7-flash">Gemini 3.7 Flash (Fast Hybrid Reasoning & Extraction) [Recommended]</option>
                     <option value="gemini-3.7-pro">Gemini 3.7 Pro (Advanced Multimodal & Complex Legal Analysis)</option>
@@ -72,7 +75,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">
+                  <label className="mb-1 block font-semibold text-slate-800">
                     Minimum Rule Confidence Threshold ({Math.round(Number(confidenceThreshold) * 100)}%)
                   </label>
                   <input
@@ -82,10 +85,10 @@ export default function SettingsPage() {
                     step="0.05"
                     value={confidenceThreshold}
                     onChange={(e) => setConfidenceThreshold(e.target.value)}
-                    className="w-full"
+                    className="w-full accent-[#12304A]"
                   />
-                  <span className="text-[11px] text-slate-500">
-                    Detections below this confidence level are routed to <strong>REQUIRES_REVIEW</strong> for manual officer verification.
+                  <span className="text-xs text-slate-500">
+                    Detections below this confidence level are routed to <strong className="font-semibold text-slate-800">REQUIRES_REVIEW</strong> for manual officer verification.
                   </span>
                 </div>
               </CardBody>
@@ -93,37 +96,42 @@ export default function SettingsPage() {
 
             <Card>
               <CardHeader
-                title="Supabase & Drizzle ORM Infrastructure"
-                description="Database connection and pgvector semantic retrieval status"
+                title="Database & Knowledge Base"
+                description="Database connection and legal metrology knowledge vector status"
               />
-              <CardBody className="space-y-3 text-xs">
-                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <CardBody className="space-y-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 overflow-hidden items-stretch rounded border border-slate-200 bg-slate-50 p-3">
                   <div>
-                    <div className="font-semibold text-slate-800">PostgreSQL (Drizzle ORM)</div>
-                    <div className="text-[11px] text-slate-500">Includes in-memory resilient fallback for local demo mode</div>
+                    <div className="font-semibold text-slate-900">PostgreSQL (Drizzle ORM)</div>
+                    <div className="text-xs text-slate-600">Includes in-memory resilient fallback for local demo mode</div>
                   </div>
-                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded font-semibold border border-emerald-200">
-                    Active
-                  </span>
+                  <div className="flex shrink-0 items-center">
+                    <span className="inline-flex rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                      Active
+                    </span>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div className="flex flex-wrap items-center justify-between gap-2 overflow-hidden items-stretch rounded border border-slate-200 bg-slate-50 p-3">
                   <div>
-                    <div className="font-semibold text-slate-800">pgvector Legal Metrology Rules RAG</div>
-                    <div className="text-[11px] text-slate-500">Official Gazette 2011 + amendments knowledge base</div>
+                    <div className="font-semibold text-slate-900">pgvector Knowledge RAG</div>
+                    <div className="text-xs text-slate-600">Official Gazette 2011 + amendments knowledge base</div>
                   </div>
-                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded font-semibold border border-blue-200">
-                    Vector Ready
-                  </span>
+                  <div className="flex shrink-0 items-center">
+                    <span className="inline-flex rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-800">
+                      Vector Ready
+                    </span>
+                  </div>
                 </div>
               </CardBody>
-              <CardFooter className="flex items-center justify-between">
+              <CardFooter className="flex items-center justify-between bg-slate-50/50">
                 {saved && (
-                  <span className="text-xs text-emerald-700 font-semibold">
-                    ✓ Configuration saved successfully!
+                  <span className="text-sm font-semibold text-emerald-700">
+                    ✓ Configuration saved successfully
                   </span>
                 )}
-                <Button type="submit" variant="primary" className="ml-auto" icon={<Save className="w-4 h-4" />}>
+                {!saved && <span />}
+                <Button type="submit" variant="primary" icon={<Save className="h-4 w-4" aria-hidden="true" />}>
                   Save Settings
                 </Button>
               </CardFooter>

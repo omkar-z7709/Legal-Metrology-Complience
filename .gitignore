@@ -18,6 +18,7 @@ node_modules/
 
 # Keep example environment files
 !.env.example
+!.env.local.example
 !.env.template
 
 # ============================================
@@ -124,3 +125,4 @@ test-results/
 .cache/
 .parcel-cache/
 .turbo/
+backup_history/

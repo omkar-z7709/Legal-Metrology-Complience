@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { Card, CardHeader, CardBody } from "@/components/ui/Card";
-import { BookOpen, Search, ShieldCheck, Scale, ExternalLink } from "lucide-react";
+import { Search } from "lucide-react";
+import { useDebounce } from "@/lib/useDebounce";
 
 const statutoryRules = [
   {
@@ -101,74 +102,113 @@ const statutoryRules = [
 
 export default function RulesKnowledgeBasePage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 300);
+  const [activeCategory, setActiveCategory] = useState("ALL");
 
-  const filteredRules = statutoryRules.filter(
-    (r) =>
-      r.ruleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.requirement.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const categories = [
+    { id: "ALL", label: "All Rules" },
+    { id: "MANDATORY_DECLARATION", label: "Mandatory Declarations" },
+    { id: "QUANTITY", label: "Quantity & Units" },
+    { id: "DATE", label: "Date Formats" },
+    { id: "PRICING", label: "Pricing & MRP" },
+    { id: "VISUAL_STANDARDS", label: "Visual & Font Height" },
+  ];
+
+  const filteredRules = useMemo(() => {
+    const term = debouncedSearch.toLowerCase();
+    return statutoryRules.filter((r) => {
+      const matchesSearch =
+        !term ||
+        r.ruleNumber.toLowerCase().includes(term) ||
+        r.title.toLowerCase().includes(term) ||
+        r.requirement.toLowerCase().includes(term);
+
+      const matchesCat =
+        activeCategory === "ALL" || r.category === activeCategory;
+
+      return matchesSearch && matchesCat;
+    });
+  }, [debouncedSearch, activeCategory]);
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC]">
+    <div className="flex min-h-screen bg-[var(--bg-app)]">
       <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         <TopBar breadcrumbs={[{ label: "Rule Knowledge Base" }]} />
 
-        <main className="p-8 max-w-7xl w-full mx-auto space-y-6 flex-1">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-200">
+        <main className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-6 p-4 sm:p-6 xl:p-8">
+          <header className="flex flex-col gap-4 border-b border-slate-300 pb-5 md:flex-row md:items-end md:justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-[#12304A] tracking-tight">
-                Statutory Rule Knowledge Base
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-800">MySS / Knowledge</p>
+              <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-[#12304A] sm:text-[30px]">
+                Statutory Rule Base
               </h1>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="mt-1 text-sm text-slate-600">
                 Official Legal Metrology (Packaged Commodities) Rules, 2011 and statutory Gazette amendments.
               </p>
             </div>
-          </div>
+          </header>
 
-          {/* Search Bar */}
-          <div className="relative max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search statutory rules by keyword or clause..."
-              className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#12304A] bg-white text-slate-800 shadow-2xs"
-            />
+          {/* Search & Category Filter Controls */}
+          <div className="flex flex-col gap-4 border border-slate-300 bg-white p-4 md:flex-row md:items-center md:justify-between">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search statutory rules by keyword or clause..."
+                className="w-full rounded border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 shadow-sm focus:border-[#12304A] focus:outline-none focus:ring-1 focus:ring-[#12304A]"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`rounded px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                    activeCategory === cat.id
+                      ? "bg-[#12304A] text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Rules Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {filteredRules.map((rule) => (
               <Card key={rule.id}>
                 <CardHeader
                   title={
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 bg-blue-50 text-blue-800 rounded border border-blue-200">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex rounded border border-blue-200 bg-blue-50 px-2 py-0.5 font-mono text-xs font-bold text-blue-800">
                         {rule.ruleNumber}
                       </span>
                       <span className="text-sm font-semibold text-slate-900">{rule.title}</span>
                     </div>
                   }
                   action={
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-slate-100 rounded text-slate-700">
+                    <span className="inline-flex rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-700">
                       {rule.severity}
                     </span>
                   }
                 />
-                <CardBody className="space-y-3 text-xs">
+                <CardBody className="space-y-4 text-sm">
                   <div>
-                    <span className="text-slate-400 font-semibold uppercase text-[10px] block mb-1">
+                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                       Statutory Requirement
                     </span>
-                    <p className="text-slate-700 leading-relaxed font-medium">{rule.requirement}</p>
+                    <p className="font-medium leading-relaxed text-slate-800">{rule.requirement}</p>
                   </div>
 
-                  <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-lg text-[11px] text-slate-500 space-y-0.5">
-                    <div><strong>Act / Rules:</strong> {rule.act}</div>
-                    <div><strong>Citation:</strong> {rule.clause}</div>
+                  <div className="space-y-1 rounded bg-slate-50 p-3 text-xs text-slate-600 border border-slate-100">
+                    <div><strong className="font-medium text-slate-900">Act / Rules:</strong> {rule.act}</div>
+                    <div><strong className="font-medium text-slate-900">Citation:</strong> {rule.clause}</div>
                   </div>
                 </CardBody>
               </Card>

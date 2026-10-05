@@ -4,10 +4,14 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+
+    /* Core Identity Colors (Preserved) */
     --navy-primary: #12304A;
     --blue-primary: #2563EB;
     --teal-accent: #0F766E;
 
+    /* Status Variables */
     --status-compliant: #15803D;
     --status-compliant-bg: #F0FDF4;
     --status-compliant-border: #BBF7D0;
@@ -16,24 +20,69 @@
     --status-noncompliant-bg: #FEF2F2;
     --status-noncompliant-border: #FECACA;
 
-    --status-review: #D97706;
+    --status-review: #B45309;
     --status-review-bg: #FFFBEB;
     --status-review-border: #FDE68A;
 
-    --bg-app: #F8FAFC;
+    /* Structural Colors */
+    --bg-app: #F8FAFC; /* Slightly brighter than before for modern app contrast */
     --bg-card: #FFFFFF;
     --bg-secondary: #F1F5F9;
     --border-color: #E2E8F0;
 
+    /* Typography Colors */
     --text-primary: #0F172A;
     --text-secondary: #475569;
     --text-muted: #64748B;
+
+    --focus-ring: #2563EB;
+  }
+
+  *,
+  *::before,
+  *::after {
+    border-color: var(--border-color);
   }
 
   body {
+    min-height: 100vh;
     background-color: var(--bg-app);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: #DBEAFE;
+    color: #1E3A8A;
+  }
+}
+
+/* Scrollbar polish */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

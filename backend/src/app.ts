@@ -34,9 +34,17 @@ export function buildApp(): FastifyInstance {
   // Security & Utilities
   app.register(sensible);
   app.register(cors, {
-    origin: env.CORS_ORIGIN.split(",").map((s) => s.trim()),
+    origin: true, // Allow all origins for local debugging
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  });
+
+  // Security Headers Hook
+  app.addHook("onRequest", async (request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-XSS-Protection", "1; mode=block");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
   });
 
   // Multipart file upload support
@@ -84,8 +92,15 @@ export function buildApp(): FastifyInstance {
   app.get("/files/:name", async (request, reply) => {
     const { name } = request.params as { name: string };
     const fileName = path.basename(decodeURIComponent(name));
-    if (!fileName || fileName.includes("..")) {
+
+    // Security check: Block path traversal, hidden files, or files without extension
+    if (!fileName || fileName.startsWith(".") || fileName.includes("..")) {
       return reply.status(404).send({ success: false, error: { code: "NOT_FOUND", message: "File not found." } });
+    }
+
+    const ext = path.extname(fileName).toLowerCase();
+    if (!FILE_CONTENT_TYPES[ext]) {
+      return reply.status(403).send({ success: false, error: { code: "FORBIDDEN", message: "Access to file type denied." } });
     }
 
     const filePath = path.join(LOCAL_STORAGE_DIR, fileName);

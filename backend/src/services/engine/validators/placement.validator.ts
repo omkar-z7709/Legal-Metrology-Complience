@@ -36,6 +36,7 @@ export class PlacementValidator implements IValidator {
           evidence: "Declaration absent from package OCR scan",
           confidence: 0.95,
           boundingBox: null,
+          absenceBased: true,
           suggestedAction: `Ensure ${item.label} is printed on Principal Display Panel as mandated by Rule 7.`,
         });
       } else if (decl.bbox && typeof decl.bbox.y1 === "number") {
@@ -49,7 +50,7 @@ export class PlacementValidator implements IValidator {
           title: `Declaration Placement Verified - ${item.label}`,
           reason: `${item.label} is positioned on principal display panel bounding region (${decl.bbox.x1}, ${decl.bbox.y1}).`,
           evidence: decl.source_text || decl.value,
-          confidence: Math.min(0.98, (decl.confidence || 0.9) + 0.05),
+          confidence: Math.min(0.98, (decl.confidence ?? 0.9) + 0.05),
           boundingBox: decl.bbox,
         });
       } else {
@@ -63,7 +64,7 @@ export class PlacementValidator implements IValidator {
           title: `Declaration Placement Requires Inspection - ${item.label}`,
           reason: `${item.label} detected in OCR text ("${decl.value}"), but relative panel placement requires visual officer verification.`,
           evidence: decl.source_text || decl.value,
-          confidence: decl.confidence || 0.85,
+          confidence: decl.confidence ?? 0.85,
           boundingBox: null,
           suggestedAction: `Visually confirm that ${item.label} appears on Principal Display Panel without obstruction.`,
         });

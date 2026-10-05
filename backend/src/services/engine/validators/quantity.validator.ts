@@ -26,6 +26,7 @@ export class QuantityValidator implements IValidator {
         reason: "Package lacks mandatory Net Quantity declaration.",
         evidence: "No valid metric net quantity detected on label.",
         confidence: 0.98,
+        absenceBased: true,
         suggestedAction: "Prohibit dispatch of non-standard quantity packages under Section 36.",
       });
       return results;
@@ -44,7 +45,7 @@ export class QuantityValidator implements IValidator {
         title: "Standard Net Quantity Declaration",
         reason: `Declared in standard metric unit: ${qty.numeric_value} ${unit.toUpperCase()}.`,
         evidence: qty.source_text || `${qty.numeric_value} ${unit}`,
-        confidence: qty.confidence || 0.98,
+        confidence: qty.confidence ?? 0.98,
         boundingBox: qty.bbox,
       });
     } else {

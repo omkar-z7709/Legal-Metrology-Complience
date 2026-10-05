@@ -24,6 +24,7 @@ export class MRPValidator implements IValidator {
         reason: "Package lacks mandatory Maximum Retail Price (MRP) declaration.",
         evidence: "No valid retail price in Rs. / ₹ detected on package.",
         confidence: 0.98,
+        absenceBased: true,
         suggestedAction: "Statutory violation under Rule 6(1)(e) - Package cannot be offered for retail sale without MRP.",
       });
       return results;
@@ -40,7 +41,7 @@ export class MRPValidator implements IValidator {
         title: "Maximum Retail Price Declared",
         reason: `Valid MRP declared as ₹${mrp.numeric_value}.`,
         evidence: mrp.source_text || `MRP ₹${mrp.numeric_value}`,
-        confidence: mrp.confidence || 0.97,
+        confidence: mrp.confidence ?? 0.97,
         boundingBox: mrp.bbox,
       });
     }
@@ -58,6 +59,7 @@ export class MRPValidator implements IValidator {
         reason: "Retail sale price must explicitly state 'Inclusive of all taxes' or 'incl. of all taxes'.",
         evidence: mrp.source_text || "Found price without explicit tax inclusion wording.",
         confidence: 0.92,
+        absenceBased: true,
         suggestedAction: "Require label correction to mandate '(Incl. of all taxes)' following MRP.",
       });
     }

@@ -40,44 +40,36 @@ A high-precision, explainable automated compliance inspection system for package
 ## 📁 Repository Structure
 
 ```
-legal-metrology-compliance/
-├── backend/
-│   ├── src/
-│   │   ├── config/
-│   │   │   └── env.ts           # Zod-validated environment config
-│   │   ├── db/
-│   │   │   └── supabase.ts      # Official Supabase client & connection health
-│   │   ├── routes/
-│   │   │   └── health.ts        # Fastify health & liveness routes
-│   │   ├── scripts/
-│   │   │   ├── test-db.ts       # Supabase connection probe
-│   │   │   └── test-server.ts   # Route inject self-test
-│   │   ├── app.ts               # Fastify app factory (CORS, sensible, routes)
-│   │   └── server.ts            # Entrypoint listener
-│   ├── .env.example
-│   ├── package.json
-│   └── tsconfig.json
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── globals.css      # Tailwind CSS styling
-│   │   │   ├── layout.tsx       # Root layout
-│   │   │   └── page.tsx         # Module 0 verification dashboard
-│   │   └── lib/
-│   │       └── api.ts           # Type-safe API client
-│   ├── .env.local.example
-│   ├── next.config.ts
-│   ├── package.json
-│   └── tsconfig.json
-├── docker-compose.yml           # Optional local Postgres + pgvector setup
-└── package.json                 # Monorepo workspace runner scripts
+SIH/
+├── backend/                  # Fastify 5 REST API & AI/OCR engine
+├── frontend/                 # Next.js 15 App Router web application
+├── samples/                  # Sample test datasets for inspection
+│   ├── dataset_1/
+│   ├── dataset_2/
+│   └── preprocessed/
+├── backup_history/           # Step-by-step architectural change summaries
+├── docker-compose.yml        # Local Postgres + pgvector setup
+├── package.json              # Monorepo workspace scripts
+└── README.md
 ```
 
 ---
 
-## 🚀 Quick Start (Module 0)
+## 🚀 Quick Start
 
-### 1. Backend
+### 1. Monorepo Root Execution (Recommended)
+
+```bash
+# Install dependencies for all workspace packages
+npm run install:all
+
+# Start both backend (port 8000) and frontend (port 3000) concurrently
+npm run dev
+```
+
+### 2. Individual Package Execution
+
+#### Backend
 
 ```bash
 cd backend
@@ -88,7 +80,7 @@ npm run dev
 
 Health check available at: `http://localhost:8000/api/health`
 
-### 2. Frontend
+#### Frontend
 
 ```bash
 cd frontend

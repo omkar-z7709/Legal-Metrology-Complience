@@ -3,12 +3,13 @@ import React from "react";
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   className?: string;
+  noPadding?: boolean;
 }
 
-export function Card({ children, className = "", ...props }: CardProps) {
+export function Card({ children, className = "", noPadding, ...props }: CardProps) {
   return (
     <div
-      className={`bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden ${className}`}
+      className={`bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden flex flex-col ${className}`}
       {...props}
     >
       {children}
@@ -30,16 +31,16 @@ export function CardHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className={`px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-4 ${className}`}>
+    <div className={`px-5 py-4 border-b border-slate-100 flex items-start sm:items-center justify-between gap-4 flex-col sm:flex-row bg-white ${className}`}>
       {title || description ? (
-        <div>
-          {title && <h3 className="text-base font-semibold text-slate-900">{title}</h3>}
-          {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
+        <div className="flex-1">
+          {title && <h3 className="text-[15px] font-semibold text-slate-900 tracking-tight">{title}</h3>}
+          {description && <p className="text-[13px] text-slate-500 mt-1 leading-relaxed">{description}</p>}
         </div>
       ) : (
         children
       )}
-      {action && <div>{action}</div>}
+      {action && <div className="shrink-0 w-full sm:w-auto">{action}</div>}
     </div>
   );
 }
@@ -51,7 +52,7 @@ export function CardBody({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={`p-6 ${className}`}>{children}</div>;
+  return <div className={`p-5 flex-1 ${className}`}>{children}</div>;
 }
 
 export function CardFooter({
@@ -62,7 +63,7 @@ export function CardFooter({
   className?: string;
 }) {
   return (
-    <div className={`px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between ${className}`}>
+    <div className={`px-5 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-4 flex-col sm:flex-row ${className}`}>
       {children}
     </div>
   );

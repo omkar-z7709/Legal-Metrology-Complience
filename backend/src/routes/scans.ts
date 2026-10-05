@@ -4,6 +4,8 @@ import { StorageService } from "../services/storage.service.js";
 import { PreprocessService } from "../services/preprocess.service.js";
 import { DBRepo } from "../db/repo.js";
 import { OcrService } from "../services/ocr/ocr.service.js";
+import { globalTimings, ms, msSince } from "../utils/timing.js";
+import { performance } from "perf_hooks";
 
 export const scanRoutes: FastifyPluginAsync = async (
   fastify: FastifyInstance,
@@ -11,8 +13,17 @@ export const scanRoutes: FastifyPluginAsync = async (
   // 1. Upload Product Package Image & Initialize Inspection
   fastify.post(
     "/scans/upload",
-    { preHandler: [authenticate] },
+    {
+      preHandler: [authenticate],
+      // TEMP TIMING: capture arrival before auth/parse so the whole request is measurable.
+      onRequest: async (request) => {
+        (request as any).__t0 = performance.now();
+      },
+    },
     async (request, reply) => {
+      const routeStart = (request as any).__t0 ?? performance.now();
+      const handlerEnter = performance.now();
+
       const files: {
         buffer: Buffer;
         filename: string;
@@ -31,6 +42,8 @@ export const scanRoutes: FastifyPluginAsync = async (
           files: 10,
         },
       });
+
+      const multipartStart = performance.now();
 
       for await (const part of parts) {
         if (part.type === "file") {
@@ -83,6 +96,8 @@ export const scanRoutes: FastifyPluginAsync = async (
         }
       }
 
+      const multipartEnd = performance.now();
+
       console.log(
         `[UPLOAD] Received ${files.length} files:`,
         files.map((file) => file.filename),
@@ -100,12 +115,14 @@ export const scanRoutes: FastifyPluginAsync = async (
 
       // Continue with product + scan creation...
 
+      const productInsertStart = performance.now();
       const createdProduct = await DBRepo.insertProduct({
         name: productName,
         brand,
         category,
         commodityType: "Solid/Liquid",
       });
+      const productInsertEnd = performance.now();
 
       const scanNumber = `INS-${new Date().getFullYear()}-${Math.floor(
         100000 + Math.random() * 900000,
@@ -113,6 +130,7 @@ export const scanRoutes: FastifyPluginAsync = async (
 
       let inspectorId: string | undefined;
 
+      const userLookupStart = performance.now();
       if (request.user?.email) {
         const dbUser = await DBRepo.getUserByEmail(request.user.email);
 
@@ -120,7 +138,9 @@ export const scanRoutes: FastifyPluginAsync = async (
           inspectorId = dbUser.id;
         }
       }
+      const userLookupEnd = performance.now();
 
+      const scanInsertStart = performance.now();
       const createdScan = await DBRepo.insertScan({
         productId: createdProduct.id,
         inspectorId,
@@ -131,15 +151,23 @@ export const scanRoutes: FastifyPluginAsync = async (
         complianceScore: "0.00",
         ...(listingText ? { analysis: { listingText } } : {}),
       });
+      const scanInsertEnd = performance.now();
 
       console.log(
         `[UPLOAD] Received ${files.length} package image(s) for product '${productName}'`
       );
 
-      const uploadStart = Date.now();
+      
+const uploadStart = performance.now();
+      const t = globalTimings.get(createdScan.id) || { stages: {} };
+      t.requestStart = routeStart;
+      t.uploadStart = uploadStart;
+      globalTimings.set(createdScan.id, t);
+
       let totalPrepTime = 0;
       let totalStorageTime = 0;
 
+      const storageStart = performance.now();
       const storedImagePairs = await Promise.all(
         files.map(async (file, idx) => {
           // 1. Store original uploaded image
@@ -195,8 +223,31 @@ export const scanRoutes: FastifyPluginAsync = async (
         }),
       );
 
-      const storedImages = storedImagePairs.flat();
-      const uploadDurationMs = Date.now() - uploadStart;
+const storedImages = storedImagePairs.flat();
+      
+      const storageEnd = performance.now();
+      const uploadEnd = storageEnd;
+      const uploadDurationMs = performance.now() - uploadStart;
+      t.uploadEnd = uploadEnd;
+
+      // TEMP TIMING: serializable upload-phase report, surfaced on the upload response.
+      t.uploadReport = {
+        imageCount: files.length,
+        concurrency: files.length > 1 ? "Parallel" : "Sequential",
+        authMs: ms(routeStart, multipartStart),
+        multipartParseMs: ms(multipartStart, multipartEnd),
+        productInsertMs: ms(productInsertStart, productInsertEnd),
+        userLookupMs: ms(userLookupStart, userLookupEnd),
+        scanInsertMs: ms(scanInsertStart, scanInsertEnd),
+        dbInsertsTotalMs: ms(productInsertStart, scanInsertEnd),
+        storagePreprocessWallMs: ms(storageStart, storageEnd),
+        preprocessCpuSumMs: totalPrepTime,
+        storageCpuSumMs: totalStorageTime,
+        handlerEntryAfterRoutingMs: ms(routeStart, handlerEnter),
+        uploadPhaseTotalMs: msSince(routeStart),
+      };
+      globalTimings.set(createdScan.id, t);
+
 
       console.log(`[PERF] Preprocessing: ${totalPrepTime} ms`);
       console.log(`[PERF] Storage: ${totalStorageTime} ms`);
@@ -210,6 +261,8 @@ export const scanRoutes: FastifyPluginAsync = async (
           scanNumber: createdScan.scanNumber,
           productId: createdProduct.id,
           images: storedImages,
+          // TEMP TIMING: removable perf payload for the frontend debug view.
+          timing: t.uploadReport,
         },
       });
     },

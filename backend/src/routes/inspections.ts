@@ -5,6 +5,7 @@ import { ReportService } from "../services/reports/report.service.js";
 import { DocxReportService } from "../services/reports/docx-report.service.js";
 import { DBRepo } from "../db/repo.js";
 import { z } from "zod";
+import { globalTimings } from "../utils/timing.js";
 
 const reviewPayloadSchema = z.object({
   decision: z.enum(["ACCEPT", "ACCEPTED", "REJECT", "REJECTED", "MANUAL_REVIEW", "OVERRIDDEN"]),
@@ -37,6 +38,8 @@ export const inspectionRoutes: FastifyPluginAsync = async (fastify: FastifyInsta
       return reply.status(200).send({
         success: true,
         data: result,
+        // TEMP TIMING: removable perf payload for the frontend debug view.
+        timing: globalTimings.get(id)?.pipelineReport ?? null,
       });
     } catch (err: any) {
       return reply.status(500).send({

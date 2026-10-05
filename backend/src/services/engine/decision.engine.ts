@@ -8,6 +8,11 @@ import { DateValidator } from "./validators/date.validator.js";
 import { VisionQualityValidator } from "./validators/vision.validator.js";
 import { PlacementValidator } from "./validators/placement.validator.js";
 import { RagLegalService, LegalContextChunk } from "../rag/rag.service.js";
+import {
+  ExtractionReliabilityReport,
+  OcrTrustContext,
+  assessExtractionReliability,
+} from "./extraction-reliability.js";
 
 export interface EnrichedViolation extends ValidationCheckResult {
   legalContext?: LegalContextChunk[];
@@ -21,6 +26,8 @@ export interface ComplianceDecision {
     passed: number;
     failed: number;
     requiresReview: number;
+    /** FAILs softened to REVIEW because the text layer could not be trusted. */
+    absenceChecksDowngraded: number;
   };
   violations: EnrichedViolation[];
   passedChecks: ValidationCheckResult[];
@@ -28,7 +35,28 @@ export interface ComplianceDecision {
   classification: ClassificationResult;
   retrievedContext: LegalContextChunk[];
   disclaimer: string;
+  /**
+   * Grade of the text layer this decision was derived from. Consumers MUST NOT
+   * present a NON_COMPLIANT verdict as settled while this is not "RELIABLE".
+   */
+  extractionReliability: ExtractionReliabilityReport;
 }
+
+/**
+ * TEMP TIMING: optional sink so callers can attribute the combined compliance
+ * stage to RAG retrieval vs. deterministic validators. Additive — existing
+ * callers that omit it are unaffected.
+ */
+export interface ComplianceStageTiming {
+  ragMs?: number;
+  complianceMs?: number;
+}
+
+/**
+ * Facts about the text layer the decision is derived from. Callers that omit
+ * this get a conservative UNRELIABLE grade rather than an implicit pass.
+ */
+export interface ComplianceOcrContext extends OcrTrustContext {}
 
 export class ComplianceDecisionEngine {
   private static validators: IValidator[] = [
@@ -47,7 +75,9 @@ export class ComplianceDecisionEngine {
   static async evaluate(
     declarations: StructuredDeclarations,
     classification: ClassificationResult,
-    rawOcrText: string
+    rawOcrText: string,
+    timingOut?: ComplianceStageTiming,
+    ocrContext?: ComplianceOcrContext
   ): Promise<ComplianceDecision> {
     // 1. Construct dynamic compliance search query from actual inspection data
     const queryParts: string[] = [];
@@ -82,6 +112,37 @@ export class ComplianceDecisionEngine {
     }
     const compTime = Date.now() - compStart;
 
+    // --- Extraction reliability gate -------------------------------------
+    // "Not detected" only means "not printed" when the text layer is sound.
+    // Without a caller-supplied OCR context we cannot claim otherwise, so the
+    // run is graded UNRELIABLE and no absence-based FAIL is allowed to stand.
+    const reliability = assessExtractionReliability(
+      declarations,
+      ocrContext ?? {
+        provider: "unknown",
+        averageConfidence: 0,
+        textLength: rawOcrText?.length ?? 0,
+        imageCount: 0,
+      },
+    );
+
+    let absenceChecksDowngraded = 0;
+    if (reliability.verdict !== "RELIABLE") {
+      for (const check of allChecks) {
+        if (check.status !== "FAIL" || !check.absenceBased) continue;
+        check.status = "REVIEW";
+        check.title = `[Unverified] ${check.title}`;
+        check.reason =
+          `${check.reason} This finding rests on text that could not be read reliably ` +
+          `(extraction graded ${reliability.verdict}), so it must be confirmed by physical inspection.`;
+        check.suggestedAction =
+          "Do not issue notice on this check alone. Re-image the package or verify manually.";
+        check.confidence = Math.min(check.confidence, 0.4);
+        absenceChecksDowngraded++;
+      }
+    }
+    reliability.absenceChecksDowngraded = absenceChecksDowngraded;
+
     const passedChecks = allChecks.filter((c) => c.status === "PASS");
     const failedChecks = allChecks.filter((c) => c.status === "FAIL");
     const reviewChecks = allChecks.filter((c) => c.status === "REVIEW");
@@ -104,6 +165,11 @@ export class ComplianceDecisionEngine {
     });
     const totalRagTime = (Date.now() - ragStart) - compTime;
 
+    if (timingOut) {
+      timingOut.ragMs = totalRagTime;
+      timingOut.complianceMs = compTime;
+    }
+
     console.log(`[PERF] RAG: ${totalRagTime} ms`);
     console.log(`[PERF] Compliance: ${compTime} ms`);
 
@@ -121,11 +187,13 @@ export class ComplianceDecisionEngine {
     }
     score = Math.max(0, Math.min(100, score));
 
-    // Determine overall compliance status
+    // Determine overall compliance status.
+    // A run whose text layer could not be trusted can never assert a settled
+    // NON_COMPLIANT verdict, because the only evidence available was absence.
     let complianceStatus: "COMPLIANT" | "NON_COMPLIANT" | "REQUIRES_REVIEW";
-    if (failedChecks.length > 0) {
+    if (failedChecks.length > 0 && reliability.verdict === "RELIABLE") {
       complianceStatus = "NON_COMPLIANT";
-    } else if (reviewChecks.length > 0) {
+    } else if (failedChecks.length > 0 || reviewChecks.length > 0) {
       complianceStatus = "REQUIRES_REVIEW";
     } else {
       complianceStatus = "COMPLIANT";
@@ -139,12 +207,14 @@ export class ComplianceDecisionEngine {
         passed: passedChecks.length,
         failed: failedChecks.length,
         requiresReview: reviewChecks.length,
+        absenceChecksDowngraded,
       },
       violations,
       passedChecks,
       reviewChecks,
       classification,
       retrievedContext,
+      extractionReliability: reliability,
       disclaimer:
         "Automated screening assists enforcement officers by extracting declarations and identifying potential compliance issues under Legal Metrology (Packaged Commodities) Rules, 2011. Final regulatory determination remains subject to authorized officer review.",
     };
