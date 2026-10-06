@@ -17,10 +17,6 @@ export default function InspectionsListPage() {
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [loading, setLoading] = useState(true);
 
-  // Routed through fetchWithCache so navigating back to /inspections (or across
-  // to /reports, which reads the same endpoint) reuses the in-memory entry
-  // instead of re-requesting. Semantics are unchanged: same URL, same auth
-  // header, same response shape.
   useEffect(() => {
     let cancelled = false;
     fetchWithCache(
@@ -44,7 +40,10 @@ export default function InspectionsListPage() {
   }, []);
 
   const filteredScans = scans.filter((s) => {
-    const productName = s.analysis?.declarations?.generic_name?.value || s.productName || "Commodity";
+    const productName =
+      s.analysis?.declarations?.generic_name?.value ||
+      s.productName ||
+      "Commodity";
     const matchesSearch =
       s.scanNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -56,9 +55,6 @@ export default function InspectionsListPage() {
     return matchesSearch && matchesStatus;
   });
 
-  // The shell (sidebar, title, filters) renders immediately; only the scan table
-  // waits on GET /api/scans. Gating the whole page made navigation appear to
-  // block on a fetch navigation does not need.
   const LoadingRows = () => (
     <>
       {Array.from({ length: 5 }).map((_, i) => (
@@ -101,22 +97,23 @@ export default function InspectionsListPage() {
                 Inspections
               </h1>
               <p className="text-sm text-slate-500 mt-1">
-                Enforcement history and ongoing package reviews.
+                Authoritative statutory inspection history, search, and compliance filtering under Legal Metrology Rules, 2011.
               </p>
             </div>
 
-<Link href="/inspections/new">
-            <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
-              New Inspection
-            </Button>
-          </Link>
-
-          <Link href="/inspections/live">
-            <Button variant="secondary" icon={<Video className="w-4 h-4" />}>
-              Live Lot Inspection
-            </Button>
-          </Link>
-        </div>
+            <div className="flex items-center gap-3">
+              <Link href="/inspections/new">
+                <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
+                  Initiate New Inspection
+                </Button>
+              </Link>
+              <Link href="/inspections/live">
+                <Button variant="secondary" icon={<Video className="w-4 h-4" />}>
+                  Live Lot Inspection
+                </Button>
+              </Link>
+            </div>
+          </div>
 
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <div className="relative w-full md:w-96">
@@ -181,22 +178,29 @@ export default function InspectionsListPage() {
                         scan.analysis?.declarations?.generic_name?.value ||
                         scan.productName ||
                         "Packaged Commodity";
-                      const violationsCount = scan.analysis?.violations?.length || 0;
+                      const violationsCount =
+                        scan.analysis?.violations?.length || 0;
 
                       return (
                         <tr
                           key={scan.id}
                           className="hover:bg-slate-50 transition-colors"
                         >
-                          <td className="px-6 py-4 font-mono text-slate-900">
-                            <Link href={`/inspections/${scan.id}`} className="hover:underline text-blue-600">
+                          <td className="px-6 py-4 font-mono text-slate-900 font-semibold">
+                            <Link
+                              href={`/inspections/${scan.id}`}
+                              className="hover:underline text-blue-600"
+                            >
                               {scan.scanNumber}
                             </Link>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="font-medium text-slate-900">{productName}</div>
-                            <div className="text-xs text-slate-500 mt-1">
-                              {scan.analysis?.classification?.category || "Unknown"}
+                            <div className="font-semibold text-slate-800">
+                              {productName}
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              {scan.analysis?.classification?.category ||
+                                "General Commodity"}
                             </div>
                           </td>
                           <td className="px-6 py-4 text-slate-600">
@@ -204,13 +208,18 @@ export default function InspectionsListPage() {
                           </td>
                           <td className="px-6 py-4">
                             <StatusBadge
-                              status={scan.complianceStatus || "REQUIRES_REVIEW"}
+                              status={
+                                scan.complianceStatus || "REQUIRES_REVIEW"
+                              }
                               size="sm"
                             />
                           </td>
                           <td className="px-6 py-4">
                             {violationsCount > 0 ? (
-                              <span className="text-red-600 font-medium">{violationsCount} detected</span>
+                              <span className="px-2 py-0.5 bg-red-50 text-red-700 font-bold rounded border border-red-200">
+                                {violationsCount} Violation
+                                {violationsCount !== 1 ? "s" : ""}
+                              </span>
                             ) : (
                               <span className="text-slate-400">None detected</span>
                             )}

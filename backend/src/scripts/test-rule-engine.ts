@@ -36,6 +36,7 @@ async function runRuleEngineTest() {
     net_quantity: { value: "1 L", numeric_value: 1, unit: "l", source_text: "Net Quantity: 1 L (910 g)", confidence: 0.98, bbox: null },
     mrp: { value: "₹185.00", numeric_value: 185, currency: "INR", is_inclusive_of_taxes: true, unit_sale_price: null, source_text: "MRP Rs. 185 (Incl. of all taxes)", confidence: 0.97, bbox: null },
     date_of_manufacture: { value: "08/2026", raw_format: "08/2026", source_text: "Mfg Date: 08/2026", confidence: 0.94, bbox: null },
+    date_of_expiry: { value: null, raw_format: null, source_text: null, confidence: 0, bbox: null },
     consumer_care: { value: "1800-425-8899 care@sunpure.in", phone: "1800-425-8899", email: "care@sunpure.in", address: null, source_text: "Helpline: 1800-425-8899", confidence: 0.95, bbox: null },
     country_of_origin: { value: "India", source_text: "Country of Origin: India", confidence: 0.98, bbox: null },
     other_declarations: [],

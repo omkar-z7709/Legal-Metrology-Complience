@@ -27,6 +27,7 @@ async function runVisionAnalysisTests() {
     net_quantity: { value: "1 L", numeric_value: 1, unit: "l", source_text: "1 L", confidence: 0.98, bbox: { x1: 80, y1: 240, x2: 300, y2: 280 } },
     mrp: { value: "₹185.00", numeric_value: 185, currency: "INR", is_inclusive_of_taxes: true, unit_sale_price: null, source_text: "MRP Rs. 185", confidence: 0.97, bbox: { x1: 80, y1: 300, x2: 450, y2: 340 } },
     date_of_manufacture: { value: "08/2026", raw_format: "08/2026", source_text: "08/2026", confidence: 0.94, bbox: null },
+    date_of_expiry: { value: null, raw_format: null, source_text: null, confidence: 0, bbox: null },
     consumer_care: { value: "1800-425-8899", phone: "1800-425-8899", email: null, address: null, source_text: "1800-425-8899", confidence: 0.93, bbox: null },
     country_of_origin: { value: "India", source_text: "India", confidence: 0.95, bbox: null },
     other_declarations: [],

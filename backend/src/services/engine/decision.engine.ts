@@ -1,6 +1,6 @@
 import { StructuredDeclarations } from "../extraction/extraction.schema.js";
 import { ClassificationResult } from "../classification/classifier.service.js";
-import { IValidator, ValidationCheckResult } from "./validators/validator.interface.js";
+import { IValidator, ValidationCheckResult, EvidenceQuality, gateAbsenceFinding } from "./validators/validator.interface.js";
 import { PresenceValidator } from "./validators/presence.validator.js";
 import { MRPValidator } from "./validators/mrp.validator.js";
 import { QuantityValidator } from "./validators/quantity.validator.js";
@@ -104,10 +104,17 @@ export class ComplianceDecisionEngine {
     );
 
     // 3. Run each deterministic validator
+    const evidenceQuality: EvidenceQuality | undefined = ocrContext
+      ? {
+          ocrConfidence: ocrContext.averageConfidence,
+          extractionDegraded: Boolean(ocrContext.extractionDegraded),
+        }
+      : undefined;
+
     const compStart = Date.now();
     const allChecks: ValidationCheckResult[] = [];
     for (const validator of this.validators) {
-      const results = validator.validate(declarations, classification, rawOcrText);
+      const results = validator.validate(declarations, classification, rawOcrText, evidenceQuality);
       allChecks.push(...results);
     }
     const compTime = Date.now() - compStart;

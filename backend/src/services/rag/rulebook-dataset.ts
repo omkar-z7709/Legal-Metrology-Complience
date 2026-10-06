@@ -26,7 +26,8 @@ export interface StructureAwareRuleChunk {
     | "PROCEDURE"
     | "APPLICABILITY"
     | "AMENDMENT"
-    | "NOTE";
+    | "NOTE"
+    | "PROHIBITION";
   requirementType: "MANDATORY" | "CONDITIONAL" | "PROHIBITION" | "EXEMPTION" | "TECHNICAL_SPEC";
   commodityScope: string;
   applicability: string;

@@ -22,6 +22,7 @@ import {
   ScanSearch,
   Server,
   ShieldCheck,
+  Video,
 } from "lucide-react";
 
 const violationLabels: Record<string, string> = {
@@ -118,11 +119,18 @@ export default function DashboardPage() {
               </h1>
               <p className="mt-1 text-sm text-slate-600">Legal Metrology (Packaged Commodities) Rules, 2011</p>
             </div>
-            <Link href="/inspections/new">
-              <Button variant="primary" icon={<ScanSearch className="h-4 w-4" />}>
-                New inspection
-              </Button>
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link href="/inspections/new">
+                <Button variant="primary" icon={<ScanSearch className="h-4 w-4" />}>
+                  New inspection
+                </Button>
+              </Link>
+              <Link href="/inspections/live">
+                <Button variant="secondary" icon={<Video className="h-4 w-4" />}>
+                  Live Lot Inspection
+                </Button>
+              </Link>
+            </div>
           </header>
 
           <section aria-label="System health" className="flex flex-col gap-3 border-y border-slate-300 bg-[#EAF0F4] px-4 py-3 md:flex-row md:items-center md:justify-between">

@@ -18,11 +18,17 @@ export interface OcrLine {
   words: OcrWord[];
 }
 
+export type OcrProviderName =
+  | "google-cloud-vision"
+  | "tesseract"
+  | "unknown"
+  | "none";
+
 export interface OcrResult {
   rawText: string;
   averageConfidence: number;
   lines: OcrLine[];
-  provider: "google-cloud-vision" | "tesseract" | "synthetic";
+  provider: OcrProviderName;
   processingTimeMs: number;
 }
 

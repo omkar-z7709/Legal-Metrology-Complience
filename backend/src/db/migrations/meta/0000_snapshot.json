@@ -1,5 +1,5 @@
 {
-  "id": "3ccbe03b-81a2-4d6a-812e-dafb068be686",
+  "id": "c21b9f1b-ce6f-4190-a26b-418d3c99f74c",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -65,7 +65,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "audit_logs_resource_id_idx": {
+          "name": "audit_logs_resource_id_idx",
+          "columns": [
+            {
+              "expression": "resource_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_logs_timestamp_idx": {
+          "name": "audit_logs_timestamp_idx",
+          "columns": [
+            {
+              "expression": "\"timestamp\" desc",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "audit_logs_user_id_users_id_fk": {
           "name": "audit_logs_user_id_users_id_fk",
@@ -148,7 +179,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "compliance_checks_scan_id_idx": {
+          "name": "compliance_checks_scan_id_idx",
+          "columns": [
+            {
+              "expression": "scan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "compliance_checks_scan_id_scans_id_fk": {
           "name": "compliance_checks_scan_id_scans_id_fk",
@@ -258,7 +305,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "extracted_fields_scan_id_idx": {
+          "name": "extracted_fields_scan_id_idx",
+          "columns": [
+            {
+              "expression": "scan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "extracted_fields_scan_id_scans_id_fk": {
           "name": "extracted_fields_scan_id_scans_id_fk",
@@ -348,7 +411,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "images_scan_id_idx": {
+          "name": "images_scan_id_idx",
+          "columns": [
+            {
+              "expression": "scan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "images_scan_id_scans_id_fk": {
           "name": "images_scan_id_scans_id_fk",
@@ -802,7 +881,38 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "scans_created_at_idx": {
+          "name": "scans_created_at_idx",
+          "columns": [
+            {
+              "expression": "\"created_at\" desc",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "scans_product_id_idx": {
+          "name": "scans_product_id_idx",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "scans_product_id_products_id_fk": {
           "name": "scans_product_id_products_id_fk",
@@ -1020,7 +1130,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "violations_scan_id_idx": {
+          "name": "violations_scan_id_idx",
+          "columns": [
+            {
+              "expression": "scan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "violations_scan_id_scans_id_fk": {
           "name": "violations_scan_id_scans_id_fk",

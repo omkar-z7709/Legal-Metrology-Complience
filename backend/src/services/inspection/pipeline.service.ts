@@ -74,12 +74,13 @@ export class InspectionPipelineService {
     const ocrStart = performance.now();
     timing.stages['ocr_total'] = { start: ocrStart, concurrency: 'Parallel', images: [] };
 
+    const visionImages: { buffer: Buffer; mimeType: string }[] = [];
     const ocrResults = await Promise.all(
       targetImages.map(async (image, idx) => {
         console.log(
           `[OCR] Processing image ${idx + 1}/${targetImages.length} (${image.imageType}): ${image.fileName}`,
         );
-        
+
         const reqStart = performance.now();
         const imageBuffer = await StorageService.downloadFile(image.storagePath);
         const reqEnd = performance.now();
@@ -90,9 +91,10 @@ export class InspectionPipelineService {
           const prep = await PreprocessService.preprocess(imageBuffer);
           bufferToOcr = prep.processedBuffer;
         }
-        
+
         const prepImageEnd = performance.now();
         const ocrExtractStart = performance.now();
+        visionImages.push({ buffer: bufferToOcr, mimeType: "image/jpeg" });
         const res = await OcrService.extract(bufferToOcr);
         const ocrExtractEnd = performance.now();
         timing.stages['ocr_total'].images.push({
@@ -102,7 +104,6 @@ export class InspectionPipelineService {
            ocrMs: ocrExtractEnd - ocrExtractStart
         });
         return res;
-
       }),
     );
 
@@ -120,7 +121,7 @@ export class InspectionPipelineService {
       ? "google-cloud-vision"
       : ocrResults.every((r) => r.provider === "tesseract")
         ? "tesseract"
-        : "synthetic";
+        : "unknown";
 
     const ocrResult: OcrResult = {
       rawText: combinedOcrText,
@@ -142,16 +143,27 @@ export class InspectionPipelineService {
     );
     console.log(`[PERF] OCR: ${ocrDurationMs} ms`);
 
-    // 3. Gemini Structured Extraction Stage
+    // 3. Gemini Structured Extraction Stage (VISION: real image bytes + OCR aid)
     await DBRepo.updateScan(scanId, { status: "PROCESSING", currentStage: "EXTRACTION" });
     console.log(
-      `[GEMINI] Invoking Gemini structured extraction on combined package text...`,
+      `[GEMINI] Invoking Gemini vision extraction on ${visionImages.length} image(s) + ${combinedOcrText.length} chars of OCR aid...`,
     );
     const geminiStart = performance.now();
     timing.stages['gemini_extraction'] = { start: geminiStart };
-    const declarations = await GeminiExtractor.extractDeclarations(ocrResult);
+    const { declarations, provenance } = await GeminiExtractor.extractDeclarations({
+      ocrText: combinedOcrText,
+      images: visionImages,
+    });
     const geminiDurationMs = performance.now() - geminiStart;
     timing.stages['gemini_extraction'].end = performance.now();
+    console.log(
+      `[GEMINI] engine=${provenance.engine} model=${provenance.model ?? "n/a"} degraded=${provenance.degraded} attempts=${provenance.attempts}`,
+    );
+    if (provenance.degraded) {
+      console.warn(
+        `[GEMINI] DEGRADED EXTRACTION: ${provenance.reason}. Declaration confidences below are regex-derived estimates, NOT verified model output.`,
+      );
+    }
     console.log(`[PERF] Gemini: ${geminiDurationMs} ms`);
 
     // 4. Product Classification Stage
@@ -172,7 +184,7 @@ export class InspectionPipelineService {
     console.log(
       `[COMPLIANCE] Executing deterministic rule validation and RAG grounding for '${classification.category}'...`,
     );
-    
+
     timing.stages['rule_evaluation'] = { start: performance.now() };
     const complianceTiming: ComplianceStageTiming = {};
     const decision = await ComplianceDecisionEngine.evaluate(
@@ -185,6 +197,7 @@ export class InspectionPipelineService {
         averageConfidence: ocrResult.averageConfidence,
         textLength: ocrResult.rawText.length,
         imageCount: targetImages.length,
+        extractionDegraded: provenance.degraded,
       },
     );
 
@@ -281,6 +294,12 @@ export class InspectionPipelineService {
       analysis: {
         ...(existingListingText ? { listingText: existingListingText } : {}),
         declarations,
+        extraction: provenance,
+        ocr: {
+          provider,
+          averageConfidence: ocrResult.averageConfidence,
+          lineCount: ocrResult.lines.length,
+        },
         ...decision,
       },
     });

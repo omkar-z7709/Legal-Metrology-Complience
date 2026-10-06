@@ -408,7 +408,6 @@ export default function LiveInspectionPage() {
     let pipelineTiming: PipelineReport | null = null;
     let gapUploadToAnalyzeMs: number | null = null;
     let timingScanId: string | null = null;
-
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -562,7 +561,6 @@ export default function LiveInspectionPage() {
       };
       setPerfReport(report);
       saveInspectionTiming(report);
-
       if (barcode) {
         const profile: CachedProfile = {
           barcode,
@@ -1129,7 +1127,6 @@ export default function LiveInspectionPage() {
           <div className="text-[10px] text-slate-400 leading-relaxed border-t border-slate-200 pt-4">
             <strong>Operational note:</strong> reference matches are a speed optimization inside the current browser session. A fresh AI-assisted analysis is performed for a new product or a product that does not match the cached barcode/visual reference. Final legal determination remains with the authorized inspector.
           </div>
-
           {/* TEMP DEBUG INSTRUMENTATION — same panel the browse flow uses. */}
           {perfReport && <InspectionPerfPanel report={perfReport} />}
         </main>

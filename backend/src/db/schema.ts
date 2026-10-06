@@ -10,8 +10,9 @@ import {
   uuid,
   pgEnum,
   vector,
+  index,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 
 
@@ -78,7 +79,10 @@ export const scans = pgTable("scans", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("scans_created_at_idx").on(sql`${table.createdAt} desc`),
+  index("scans_product_id_idx").on(table.productId),
+]);
 
 // 4. Images Table
 export const images = pgTable("images", {
@@ -92,7 +96,7 @@ export const images = pgTable("images", {
   width: integer("width"),
   height: integer("height"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [index("images_scan_id_idx").on(table.scanId)]);
 
 // 5. Extracted Fields Table
 export const extractedFields = pgTable("extracted_fields", {
@@ -107,7 +111,7 @@ export const extractedFields = pgTable("extracted_fields", {
   isPresent: boolean("is_present").notNull().default(true),
   validationStatus: varchar("validation_status", { length: 50 }).default("UNCHECKED"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [index("extracted_fields_scan_id_idx").on(table.scanId)]);
 
 // 6. Rules Table
 export const rules = pgTable("rules", {
@@ -138,7 +142,7 @@ export const complianceChecks = pgTable("compliance_checks", {
   confidence: numeric("confidence", { precision: 5, scale: 4 }),
   evidenceText: text("evidence_text"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [index("compliance_checks_scan_id_idx").on(table.scanId)]);
 
 // 8. Violations Table
 export const violations = pgTable("violations", {
@@ -154,7 +158,7 @@ export const violations = pgTable("violations", {
   boundingBox: jsonb("bounding_box"),
   suggestedAction: text("suggested_action"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [index("violations_scan_id_idx").on(table.scanId)]);
 
 // 9. Reports Table
 export const reports = pgTable("reports", {
@@ -178,7 +182,10 @@ export const auditLogs = pgTable("audit_logs", {
   details: jsonb("details"),
   ipAddress: varchar("ip_address", { length: 45 }),
   timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (table) => [
+  index("audit_logs_resource_id_idx").on(table.resourceId),
+  index("audit_logs_timestamp_idx").on(sql`${table.timestamp} desc`),
+]);
 
 // 11. New Legal Rulebook Vector Embeddings Table (Structure-Aware Vector DB)
 export const newLegalRulebookEmbeddings = pgTable("new_legal_rulebook_embeddings", {
@@ -207,7 +214,7 @@ export const newLegalRulebookEmbeddings = pgTable("new_legal_rulebook_embeddings
   sourceHash: varchar("source_hash", { length: 64 }).notNull(),
   content: text("content").notNull(),
   metadataJson: jsonb("metadata_json").notNull(),
-  embedding: vector("embedding", { dim: 768 }),
+  embedding: vector("embedding", { dimensions: 768 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

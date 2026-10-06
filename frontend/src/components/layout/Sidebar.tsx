@@ -18,7 +18,7 @@ import {
   LogOut,
   KeyRound,
   Video,
-  X
+  X,
 } from "lucide-react";
 import { useSidebarStore } from "@/lib/store";
 
@@ -101,7 +101,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               prefetch={true}
-onClick={() => setIsOpen(false)}
+              onClick={() => setIsOpen(false)}
               className={`flex items-center justify-between px-3 py-2 text-[13px] font-medium rounded-md transition-all duration-200 ${
                 isActive
                   ? "bg-[var(--navy-primary)] text-white shadow-sm"

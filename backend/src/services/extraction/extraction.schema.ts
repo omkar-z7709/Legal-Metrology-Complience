@@ -15,6 +15,9 @@ export const declarationFieldSchema = z.object({
   source_text: z.string().nullable(),
   confidence: z.number().min(0).max(1),
   bbox: boundingBoxSchema,
+  // Index of the package image this value/bbox was read from (0-based).
+  // Normalised coords are per-image, so localisation is meaningless without it.
+  image_index: z.number().int().min(0).nullable().optional(),
 });
 
 export const netQuantityFieldSchema = declarationFieldSchema.extend({
@@ -49,7 +52,7 @@ export const structuredDeclarationsSchema = z.object({
   net_quantity: netQuantityFieldSchema,
   mrp: mrpFieldSchema,
   date_of_manufacture: dateFieldSchema,
-  date_of_expiry: dateFieldSchema,
+  date_of_expiry: dateFieldSchema.default({ value: null, confidence: 0, source_text: null }),
   consumer_care: consumerCareFieldSchema,
   country_of_origin: declarationFieldSchema,
   other_declarations: z.array(

@@ -55,6 +55,7 @@ export interface OcrTrustContext {
   averageConfidence: number;
   textLength: number;
   imageCount: number;
+  extractionDegraded?: boolean;
 }
 
 export function assessExtractionReliability(

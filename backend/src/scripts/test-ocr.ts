@@ -100,7 +100,20 @@ async function runOcrPipelineTest() {
     throw new Error(`OCR endpoint failed: ${JSON.stringify(ocrEndpointJson)}`);
   }
 
-  console.log(`   ✓ OCR Endpoint returned ${ocrEndpointJson.data.ocr.lines.length} lines for Scan ID ${scanId}.`);
+  const ocrResults = ocrEndpointJson.data.ocr?.results ?? [];
+  const totalLines = ocrResults.reduce(
+    (n: number, r: any) => n + (r.lines?.length ?? 0),
+    0,
+  );
+  console.log(
+    `   ✓ OCR Endpoint returned ${totalLines} localized line(s) across ${ocrResults.length} image(s) for Scan ID ${scanId}.`,
+  );
+
+  if (totalLines <= 0) {
+    throw new Error(
+      "OCR returned no localized lines - Rule 7 placement checks cannot be verified.",
+    );
+  }
 
   console.log("\n==================================================");
   console.log("✅ MODULE 5: OCR Pipeline Successfully Verified!");
