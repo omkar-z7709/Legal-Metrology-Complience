@@ -180,6 +180,38 @@ export const auditLogs = pgTable("audit_logs", {
   timestamp: timestamp("timestamp", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// 11. New Legal Rulebook Vector Embeddings Table (Structure-Aware Vector DB)
+export const newLegalRulebookEmbeddings = pgTable("new_legal_rulebook_embeddings", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  chunkId: varchar("chunk_id", { length: 255 }).notNull().unique(),
+  sourceType: varchar("source_type", { length: 50 }).notNull().default("regulatory_text"), // 'regulatory_text' | 'derived_validation_rule'
+  authority: text("authority").notNull().default("Ministry of Consumer Affairs, Food and Public Distribution"),
+  documentName: text("document_name").notNull().default("Legal Metrology (Packaged Commodities) Rules, 2011 & Gazette Amendments"),
+  documentVersion: varchar("document_version", { length: 50 }).notNull().default("2026.1-GAZETTE-UPDATED"),
+  ruleId: varchar("rule_id", { length: 100 }).notNull(),
+  ruleNumber: varchar("rule_number", { length: 100 }).notNull(),
+  section: varchar("section", { length: 255 }),
+  subsection: varchar("subsection", { length: 255 }),
+  schedule: varchar("schedule", { length: 100 }),
+  table: varchar("table", { length: 100 }),
+  topic: varchar("topic", { length: 255 }).notNull(),
+  chunkType: varchar("chunk_type", { length: 50 }).notNull(), // 'RULE' | 'SUB_RULE' | 'DEFINITION' | 'TABLE' | 'SCHEDULE' | 'EXEMPTION' | 'EXCEPTION' | 'PROVISO' | 'PENALTY' | 'PROCEDURE' | 'APPLICABILITY' | 'AMENDMENT' | 'NOTE'
+  requirementType: varchar("requirement_type", { length: 50 }).notNull().default("MANDATORY"),
+  commodityScope: text("commodity_scope"),
+  applicability: text("applicability"),
+  effectiveFrom: varchar("effective_from", { length: 50 }),
+  effectiveUntil: varchar("effective_until", { length: 50 }),
+  amendmentReference: text("amendment_reference"),
+  sourcePage: integer("source_page"),
+  parentRuleId: varchar("parent_rule_id", { length: 100 }),
+  sourceHash: varchar("source_hash", { length: 64 }).notNull(),
+  content: text("content").notNull(),
+  metadataJson: jsonb("metadata_json").notNull(),
+  embedding: vector("embedding", { dim: 768 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+
 // Relations
 export const productsRelations = relations(products, ({ many }) => ({
   scans: many(scans),

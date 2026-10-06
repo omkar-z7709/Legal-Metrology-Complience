@@ -7,7 +7,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/Badge";
-import { Eye, Search, Plus, Filter } from "lucide-react";
+import { Eye, Search, Plus, Filter, Video } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import { fetchWithCache } from "@/lib/cache";
 
@@ -105,12 +105,18 @@ export default function InspectionsListPage() {
               </p>
             </div>
 
-            <Link href="/inspections/new">
-              <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
-                New Inspection
-              </Button>
-            </Link>
-          </div>
+<Link href="/inspections/new">
+            <Button variant="primary" icon={<Plus className="w-4 h-4" />}>
+              New Inspection
+            </Button>
+          </Link>
+
+          <Link href="/inspections/live">
+            <Button variant="secondary" icon={<Video className="w-4 h-4" />}>
+              Live Lot Inspection
+            </Button>
+          </Link>
+        </div>
 
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <div className="relative w-full md:w-96">

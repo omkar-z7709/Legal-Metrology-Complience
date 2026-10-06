@@ -120,6 +120,44 @@ export class RagLegalService {
   ): Promise<LegalContextChunk[]> {
     const queryVecStr = `[${queryVec.join(",")}]`;
 
+    // 1. Primary: Search new structure-aware legal rulebook embeddings vector table
+    try {
+      const newRows = await db.execute(sql`
+        SELECT
+          id,
+          chunk_id,
+          rule_id,
+          rule_number,
+          section,
+          topic,
+          content,
+          metadata_json,
+          1 - (embedding <=> ${queryVecStr}::vector) AS similarity
+        FROM new_legal_rulebook_embeddings
+        ORDER BY embedding <=> ${queryVecStr}::vector
+        LIMIT ${topK}
+      `);
+
+      if (newRows && (newRows as any[]).length > 0) {
+        return (newRows as any[]).map((row) => {
+          const meta = row.metadata_json || {};
+          return {
+            ruleId: row.rule_id || row.chunk_id,
+            ruleNumber: row.rule_number || "Rule Context",
+            sourceAct: meta.document_name || "Legal Metrology (Packaged Commodities) Rules, 2011 & Gazette Amendments",
+            clause: `${row.section || "General"} - ${row.topic || ""}`,
+            text: row.content,
+            similarityScore: Math.max(0, Math.round(parseFloat(row.similarity || "0") * 100) / 100),
+            effectiveDate: meta.effective_from || "2011-11-01",
+            statutoryObligation: row.content,
+          };
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[RAG] new_legal_rulebook_embeddings query notice: ${err.message}. Trying legacy table...`);
+    }
+
+    // 2. Legacy fallback: rule_embeddings
     const rows = await db.execute(sql`
       SELECT
         re.id,

@@ -1,7 +1,12 @@
 import { z } from "zod";
 import dotenv from "dotenv";
+import path from "path";
+import fileURLToPath from "url";
 
-dotenv.config();
+// Ensure backend/.env is loaded even if run from monorepo root
+dotenv.config({ path: path.resolve(process.cwd(), "backend/.env") });
+dotenv.config(); // Fallback for running inside backend directory
+
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),

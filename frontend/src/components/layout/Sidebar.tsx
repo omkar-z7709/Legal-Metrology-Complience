@@ -17,6 +17,7 @@ import {
   Shield,
   LogOut,
   KeyRound,
+  Video,
   X
 } from "lucide-react";
 import { useSidebarStore } from "@/lib/store";
@@ -69,6 +70,7 @@ export function Sidebar() {
   const mainNav: NavItem[] = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
     { label: "New Inspection", href: "/inspections/new", icon: ScanSearch, badge: "ACTION" },
+    { label: "Live Lot Inspection", href: "/inspections/live", icon: Video, badge: "FAST" },
     { label: "Inspections", href: "/inspections", icon: ListChecks },
     { label: "Products", href: "/products", icon: Package },
     { label: "Reports", href: "/reports", icon: FileText },

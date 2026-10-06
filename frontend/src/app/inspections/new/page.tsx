@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
+  Camera,
 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api";
 import {
@@ -427,6 +428,14 @@ export default function NewInspectionPage() {
                       onChange={handleFileChange}
                       className="hidden"
                     />
+                    <input
+                      id="package-camera"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/jpg"
+                      capture="environment"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
 
                     {previewUrls.length > 0 ? (
                       <div className="space-y-4">
@@ -452,32 +461,59 @@ export default function NewInspectionPage() {
                           ))}
                         </div>
 
-                        <div className="flex items-center justify-between pt-2">
-                          <label
-                            htmlFor="package-images"
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
-                          >
-                            <Upload className="w-4 h-4" />
-                            Add Images
-                          </label>
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                          <div className="flex items-center gap-2">
+                            <label
+                              htmlFor="package-images"
+                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            >
+                              <Upload className="w-4 h-4" />
+                              Browse Files
+                            </label>
+                            <label
+                              htmlFor="package-camera"
+                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            >
+                              <Camera className="w-4 h-4 text-blue-600" />
+                              Take Photo
+                            </label>
+                          </div>
                           <span className="text-sm text-slate-500">
                             {selectedFiles.length} file{selectedFiles.length !== 1 ? "s" : ""} selected
                           </span>
                         </div>
                       </div>
                     ) : (
-                      <label
-                        htmlFor="package-images"
-                        className="border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-lg p-8 text-center transition-colors bg-slate-50 flex flex-col items-center justify-center cursor-pointer min-h-[200px]"
-                      >
-                        <Upload className="w-8 h-8 text-slate-400 mb-4" />
-                        <h4 className="text-sm font-medium text-slate-900">
-                          Upload Images
-                        </h4>
-                        <p className="text-sm text-slate-500 mt-1 max-w-xs">
-                          Drag & drop or browse local files.
-                        </p>
-                      </label>
+                      <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 sm:p-8 text-center bg-slate-50 flex flex-col items-center justify-center min-h-[200px] space-y-4">
+                        <div className="flex items-center justify-center gap-3">
+                          <Upload className="w-8 h-8 text-slate-400" />
+                          <Camera className="w-8 h-8 text-blue-500" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-medium text-slate-900">
+                            Upload or Capture Package Images
+                          </h4>
+                          <p className="text-sm text-slate-500 mt-1 max-w-xs mx-auto">
+                            Select local files or use your camera to capture packaging photos.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                          <label
+                            htmlFor="package-images"
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-100 cursor-pointer shadow-sm"
+                          >
+                            <Upload className="w-4 h-4 text-slate-600" />
+                            Browse Files
+                          </label>
+                          <label
+                            htmlFor="package-camera"
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 cursor-pointer shadow-sm"
+                          >
+                            <Camera className="w-4 h-4" />
+                            Take Photo
+                          </label>
+                        </div>
+                      </div>
                     )}
                   </CardBody>
                 </Card>
